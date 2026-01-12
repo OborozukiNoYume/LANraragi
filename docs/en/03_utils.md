@@ -1,7 +1,6 @@
-# Phase 3: Infrastructure and Utilities Analysis
+# Infrastructure and Utilities
 
-> **Analyzed Files**: `Archive.pm`, `Minion.pm`, `Resizer.pm`  
-> **Analysis Date**: 2026-01-11
+> **Analyzed Files**: `Archive.pm`, `Minion.pm`, `Resizer.pm`, `Tags.pm`, `Generic.pm`
 
 ---
 
@@ -9,33 +8,21 @@
 
 ### Core Dependencies
 
-| Perl Module | Purpose | Go Alternative |
-|-------------|---------|----------------|
-| `Archive::Libarchive` | ZIP/RAR/7z formats | `mholt/archiver` or `libarchive` CGO |
-| `Archive::Libarchive::Peek` | Peek without extraction | `archive/zip` + streaming |
-| GhostScript (CLI) | PDF → JPG conversion | `pdfcpu` / `mupdf` CGO |
+| Perl Module | Purpose |
+|-------------|---------|
+| `Archive::Libarchive` | ZIP/RAR/7z formats |
+| `Archive::Libarchive::Peek` | Peek without extraction |
+| GhostScript (CLI) | PDF → JPG conversion |
 
 ### Main Functions
 
-```go
-// Go Interface Proposal
-type ArchiveHandler interface {
-    // Get file list (natural sorted)
-    GetFileList(archivePath string, id string) ([]string, error)
-    
-    // Extract single file to memory
-    ExtractSingleFile(archivePath, filePath string) ([]byte, error)
-    
-    // Extract single file to disk
-    ExtractSingleFileToPath(archivePath, filePath, dest string) (string, error)
-    
-    // Check if file exists in archive
-    IsFileInArchive(archivePath, wantedName string) (string, bool)
-    
-    // Generate thumbnail
-    ExtractThumbnail(thumbDir, id string, page int, setCover, useHQ bool) (string, error)
-}
-```
+| Function | Purpose |
+|----------|---------|
+| `get_filelist($archive, $id)` | Get file list (natural sorted) |
+| `extract_file_from_archive($archive, $file)` | Extract single file to temp |
+| `extract_single_file_to_path($archive, $file, $dest)` | Extract to specific path |
+| `is_file_in_archive($archive, $wanted)` | Check if file exists in archive |
+| `extract_thumbnail($thumbdir, $id, $page, $setcover, $usehq)` | Generate thumbnail |
 
 ### File Sorting Logic
 
@@ -51,30 +38,6 @@ sub expand {
 @files = ( @cover_pages, @other_pages, @credit_pages );
 ```
 
-**Go Implementation:**
-```go
-import "github.com/facette/natsort"
-
-func SortArchiveFiles(files []string) []string {
-    // 1. Natural sort
-    natsort.Sort(files)
-    
-    // 2. Extract cover/credit
-    var covers, credits, others []string
-    for _, f := range files {
-        switch {
-        case isCoverPage(f):
-            covers = append(covers, f)
-        case isCreditPage(f):
-            credits = append(credits, f)
-        default:
-            others = append(others, f)
-        }
-    }
-    return append(append(covers, others...), credits...)
-}
-```
-
 ### PDF Handling
 
 Using GhostScript CLI:
@@ -85,10 +48,6 @@ gs -dNOPAUSE -sDEVICE=jpeg -r200 -o "$dest/%d.jpg" "$pdf"
 # Extract specific page
 gs -dNOPAUSE -dFirstPage=$page -dLastPage=$page -sDEVICE=jpeg -r200 -o "$out" "$pdf"
 ```
-
-**Go Alternatives:**
-- `github.com/pdfcpu/pdfcpu` - Pure Go PDF library
-- `github.com/nicferrier/gomupdf` - MuPDF CGO binding
 
 ### Apple Resource Fork Filtering
 
@@ -129,26 +88,6 @@ if ( IS_UNIX ) {
 }
 ```
 
-**Go Implementation:**
-```go
-// Using worker pool pattern
-func ProcessThumbnails(ids []string, workers int) {
-    sem := make(chan struct{}, workers)
-    var wg sync.WaitGroup
-    
-    for _, id := range ids {
-        wg.Add(1)
-        sem <- struct{}{}
-        go func(id string) {
-            defer wg.Done()
-            defer func() { <-sem }()
-            generateThumbnail(id)
-        }(id)
-    }
-    wg.Wait()
-}
-```
-
 ### Job Progress Tracking
 
 ```perl
@@ -164,19 +103,6 @@ Using **Hamming distance** to compare thumbnail hashes:
 for ( my $i = 0; $i < length( $thumbhashes{$node} ); $i++ ) {
     $distance++ if substr( $hash1, $i, 1 ) ne substr( $hash2, $i, 1 );
     last if $distance > $threshold;  # Early termination optimization
-}
-```
-
-**Go Implementation:**
-```go
-func HammingDistance(hash1, hash2 string) int {
-    distance := 0
-    for i := 0; i < len(hash1) && i < len(hash2); i++ {
-        if hash1[i] != hash2[i] {
-            distance++
-        }
-    }
-    return distance
 }
 ```
 
@@ -207,79 +133,9 @@ sub resizer_factory {
 | `resize_thumbnail` | `$data, $quality, $use_hq, $format` | Generate thumbnail |
 | `resize_image` | `$data, $quality, $threshold` | Reader image resize |
 
-### Go Alternatives
-
-| Perl Library | Go Alternative | Notes |
-|--------------|----------------|-------|
-| Image::Magick | `disintegration/imaging` | Pure Go, fewer features |
-| libvips (FFI) | `davidbyttow/govips` | CGO, high performance |
-
-**Go Interface Design:**
-```go
-type ImageResizer interface {
-    // Generate thumbnail (500px height)
-    ResizeThumbnail(data []byte, quality int, hq bool, format string) ([]byte, error)
-    
-    // Reader image resize
-    ResizeImage(data []byte, quality int, threshold int) ([]byte, error)
-}
-
-// Factory function
-func NewResizer() ImageResizer {
-    if govips.IsAvailable() {
-        return &VipsResizer{}
-    }
-    return &ImagingResizer{}  // Pure Go fallback
-}
-```
-
 ---
 
-## 🔄 Go Task Queue Design
-
-### Recommended Library: `hibiken/asynq`
-
-```go
-package worker
-
-import (
-    "github.com/hibiken/asynq"
-)
-
-// Task types
-const (
-    TypeThumbnail      = "thumbnail:generate"
-    TypePageThumbnails = "thumbnail:pages"
-    TypeUpload         = "upload:handle"
-    TypeDownload       = "download:url"
-    TypePlugin         = "plugin:run"
-    TypeStats          = "stats:build"
-    TypeDuplicates     = "duplicates:find"
-)
-
-// Thumbnail task
-type ThumbnailPayload struct {
-    ID       string `json:"id"`
-    Page     int    `json:"page"`
-    SetCover bool   `json:"set_cover"`
-    UseHQ    bool   `json:"use_hq"`
-}
-
-func NewThumbnailTask(id string, page int) *asynq.Task {
-    payload, _ := json.Marshal(ThumbnailPayload{
-        ID:   id,
-        Page: page,
-    })
-    return asynq.NewTask(TypeThumbnail, payload,
-        asynq.Queue("thumbnails"),
-        asynq.MaxRetry(3),
-    )
-}
-```
-
----
-
-## 🏷️ Tags.pm - Tag Processing Utilities (4KB)
+## 🏷️ Tags.pm - Tag Processing Utilities
 
 ### Core Features
 
@@ -294,7 +150,7 @@ Tag rule system supporting multiple rule types:
 | `replace_ns` | `ns1:* -> ns2:*` | `category:* -> genre:*` | Replace namespace |
 | `hash_replace` | `old => new` | `foobar => correct_tag` | High-performance hash replace (runs last) |
 
-### Tag Rules Syntax (Official)
+### Tag Rules Syntax
 
 ```
 # Blacklist
@@ -338,23 +194,9 @@ Output: english, parody:One Piece, various artists
 $str = join_tags_to_string(@tags);
 ```
 
-### Go Implementation Suggestion
-
-```go
-type TagRule struct {
-    Type  string // remove, remove_ns, strip_ns, replace, replace_ns
-    Match string
-    Value string
-}
-
-func RewriteTags(tags []string, rules []TagRule, hashReplace map[string]string) []string {
-    // Iterate and apply rules
-}
-```
-
 ---
 
-## 🔧 Generic.pm - General Utility Functions (11KB)
+## 🔧 Generic.pm - General Utility Functions
 
 ### Main Function Categories
 
@@ -415,19 +257,12 @@ sub exec_with_lock {
 
 ---
 
-## ✅ Phase 3 Analysis Summary
+## ✅ Summary
 
-| Component | Perl Dependency | Go Alternative | Complexity |
-|-----------|-----------------|----------------|------------|
-| Archive | Archive::Libarchive | `mholt/archiver` / CGO | ⭐⭐⭐ |
-| PDF | GhostScript CLI | `pdfcpu` / MuPDF | ⭐⭐⭐⭐ |
-| Image | libvips / ImageMagick | `govips` / `imaging` | ⭐⭐ |
-| Task Queue | Minion (Redis) | `hibiken/asynq` | ⭐⭐⭐ |
-| Parallel | MCE::Loop | `sync.WaitGroup` + worker pool | ⭐⭐ |
-
-### Key Migration Points
-
-1. **PDF Processing**: Consider using `pdfcpu` instead of GhostScript to reduce external dependencies
-2. **Image Processing**: Prefer `govips` (performance), fallback to `imaging` (compatibility)
-3. **Task Queue**: `asynq` integrates natively with Redis, supports priority and retry
-4. **Parallel Safety**: Note Windows libarchive threading issues
+| Component | Perl Dependency | Purpose |
+|-----------|-----------------|---------|
+| Archive | Archive::Libarchive | ZIP/RAR/7z extraction |
+| PDF | GhostScript CLI | PDF to image conversion |
+| Image | libvips / ImageMagick | Image resizing |
+| Task Queue | Minion (Redis) | Background job processing |
+| Parallel | MCE::Loop | Multi-process parallelism |

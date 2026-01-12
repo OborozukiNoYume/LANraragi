@@ -1,7 +1,6 @@
-# Phase 2: API Layer Architecture Analysis
+# API Layer Architecture
 
-> **Analyzed Files**: `Routing.pm`, `Api/Archive.pm`, `Api/Search.pm`  
-> **Analysis Date**: 2026-01-11
+> **Analyzed Files**: `Routing.pm`, `Api/Archive.pm`, `Api/Search.pm`
 
 ---
 
@@ -82,7 +81,7 @@ graph LR
 | `untaggedonly` | bool | false | Untagged only |
 | `groupby_tanks` | bool | false | Group by collections |
 
-#### Search Query Syntax (Official)
+#### Search Query Syntax
 
 | Syntax | Description | Example |
 |--------|-------------|---------|
@@ -272,81 +271,6 @@ exec_with_lock( $self, $redis, "archive-write:$id", "operation", $id, sub {
 
 ---
 
-## 🏗️ Go Router Design Proposal
-
-```go
-package router
-
-import (
-    "github.com/gin-gonic/gin"
-)
-
-func SetupRouter(cfg *config.Config) *gin.Engine {
-    r := gin.New()
-    
-    // Middleware
-    r.Use(gin.Logger(), gin.Recovery())
-    if cfg.EnableCORS {
-        r.Use(CORSMiddleware())
-    }
-    
-    // Public routes
-    public := r.Group("/api")
-    {
-        // Archive
-        public.GET("/archives", archiveHandler.List)
-        public.GET("/archives/:id/metadata", archiveHandler.GetMetadata)
-        public.GET("/archives/:id/thumbnail", archiveHandler.GetThumbnail)
-        public.GET("/archives/:id/download", archiveHandler.Download)
-        
-        // Search
-        public.GET("/search", searchHandler.Search)
-        public.GET("/search/random", searchHandler.Random)
-        
-        // Category & Tankoubon
-        public.GET("/categories", categoryHandler.List)
-        public.GET("/tankoubons", tankoubonHandler.List)
-    }
-    
-    // Authenticated routes
-    authed := r.Group("/api")
-    authed.Use(AuthMiddleware(cfg))
-    {
-        authed.PUT("/archives/upload", archiveHandler.Upload)
-        authed.PUT("/archives/:id/metadata", archiveHandler.UpdateMetadata)
-        authed.DELETE("/archives/:id", archiveHandler.Delete)
-        // ...
-    }
-    
-    return r
-}
-
-// Go Handler Interface Proposal
-type ArchiveHandler interface {
-    List(c *gin.Context)
-    GetMetadata(c *gin.Context)
-    GetThumbnail(c *gin.Context)
-    Download(c *gin.Context)
-    Upload(c *gin.Context)
-    UpdateMetadata(c *gin.Context)
-    Delete(c *gin.Context)
-}
-```
-
----
-
-## ✅ Phase 2 Analysis Summary
-
-| Finding | Details |
-|---------|---------|
-| **Total Endpoints** | 60+ (API + Pages) |
-| **Auth Modes** | Session + API Key + No-Fun |
-| **Response Format** | JSON with operation/success |
-| **Concurrency Control** | Redis distributed locks |
-| **Special Features** | OPDS, WebSocket (batch) |
-
----
-
 ## 🔍 Search Engine Deep Analysis
 
 ### Search Flow
@@ -374,17 +298,6 @@ sequenceDiagram
     Controller-->>Client: JSON response
 ```
 
-### Search Syntax
-
-| Syntax | Example | Description |
-|--------|---------|-------------|
-| Regular Search | `artist:name` | Fuzzy match |
-| Exact Search | `"artist:name"` or `artist:name$` | Exact match |
-| Exclude Tag | `-tag:value` | Exclude result |
-| Wildcards | `?` `_` (single char), `*` `%` (multi char) | |
-| Page Search | `pages:>20`, `pages:<=30` | Page range |
-| Read Search | `read:>0` | Reading progress |
-
 ### Cache Mechanism
 
 ```perl
@@ -399,29 +312,6 @@ $redis->hset( "LRR_SEARCHCACHE", $cachekey, nfreeze \@filtered );
 - Call `invalidate_cache()` to delete `LRR_SEARCHCACHE`
 - `lastread` sorting does not use cache
 
-### Sort Optimization (Lua Script)
-
-```lua
--- Batch get lastreadtime
-local result = {}
-for i=1,#ARGV do
-    local id = ARGV[i]
-    local value = redis.call('HGET', id, 'lastreadtime')
-    result[i] = {id, value or "0"}
-end
-return cjson.encode(result)
-```
-
-**Go Implementation Suggestion:**
-```go
-// Use Redis Pipeline instead of Lua
-pipe := rdb.Pipeline()
-for _, id := range ids {
-    pipe.HGet(ctx, id, "lastreadtime")
-}
-results, _ := pipe.Exec(ctx)
-```
-
 ### Index Utilization
 
 | Sort/Filter | Index Used |
@@ -434,41 +324,12 @@ results, _ := pipe.Exec(ctx)
 
 ---
 
-## 🏗️ Go Search Engine Design Proposal
+## ✅ Summary
 
-```go
-package search
-
-type SearchParams struct {
-    Filter       string
-    CategoryID   string
-    Start        int
-    SortKey      string
-    SortOrder    bool // true = desc
-    NewOnly      bool
-    UntaggedOnly bool
-    GroupTanks   bool
-}
-
-type SearchResult struct {
-    Total    int               `json:"recordsTotal"`
-    Filtered int               `json:"recordsFiltered"`
-    Data     []model.Archive   `json:"data"`
-}
-
-type SearchEngine interface {
-    Search(ctx context.Context, params SearchParams) (*SearchResult, error)
-    InvalidateCache(ctx context.Context) error
-}
-
-// Token represents a search term
-type Token struct {
-    Tag     string
-    IsNeg   bool // Exclude
-    IsExact bool // Exact match
-}
-
-func ParseFilter(filter string) []Token {
-    // Implement search syntax parsing
-}
-```
+| Finding | Details |
+|---------|---------|
+| **Total Endpoints** | 60+ (API + Pages) |
+| **Auth Modes** | Session + API Key + No-Fun |
+| **Response Format** | JSON with operation/success |
+| **Concurrency Control** | Redis distributed locks |
+| **Special Features** | OPDS, WebSocket (batch) |

@@ -1,12 +1,12 @@
-# Phase 9-10: 测试与构建系统分析
+# 测试和构建系统
 
-> 分析时间: 2026-01-11
+> 分析日期: 2026-01-11
 
 本文档分析 LANraragi 的测试架构和构建/部署系统。
 
 ---
 
-## 📊 测试架构概览
+## 📊 测试架构概述
 
 ### 测试目录结构
 ```
@@ -21,11 +21,11 @@ tests/
 ├── LANraragi/
 │   ├── Model/
 │   │   └── Plugins.t
-│   ├── Plugin/Metadata/       # 插件单元测试 (18个)
+│   ├── Plugin/Metadata/       # 插件单元测试 (18)
 │   │   ├── Chaika.t
 │   │   ├── EHentai.t
 │   │   └── ...
-│   └── Utils/                  # 工具类测试 (8个)
+│   └── Utils/                  # 工具类测试 (8)
 │       ├── Archive.t
 │       ├── Tags.t
 │       └── ...
@@ -42,7 +42,7 @@ tests/
 
 ### Redis Mock
 
-使用 `Test::MockObject` 模拟 Redis:
+使用 `Test::MockObject` 模拟 Redis：
 
 ```perl
 my %datamodel = (
@@ -138,9 +138,9 @@ VOLUME [ "/home/koyomi/lanraragi/database" ]
 VOLUME [ "/home/koyomi/lanraragi/lib/LANraragi/Plugin/Sideloaded" ]
 ```
 
-### Docker 环境变量 (官方)
+### Docker 环境变量
 
-| 变量 | 默认值 | 说明 |
+| 变量 | 默认值 | 描述 |
 |------|--------|------|
 | `LRR_UID` | 9001 | 容器用户 ID |
 | `LRR_GID` | 9001 | 容器组 ID |
@@ -152,9 +152,9 @@ VOLUME [ "/home/koyomi/lanraragi/lib/LANraragi/Plugin/Sideloaded" ]
 
 ### 构建优化
 
-1. **分层复制** - cpanfile 先于源码，利用 Docker cache
+1. **层复制** - cpanfile 在源代码之前用于 Docker 缓存
 2. **s6-overlay** - 进程管理，支持 Redis + LRR 双进程
-3. **健康检查** - 每分钟检测 3000 端口
+3. **健康检查** - 每分钟检查端口 3000
 
 ---
 
@@ -172,11 +172,11 @@ VOLUME [ "/home/koyomi/lanraragi/lib/LANraragi/Plugin/Sideloaded" ]
 }
 ```
 
-| 键 | 说明 |
+| 键 | 描述 |
 |----|------|
 | `redis_address` | Redis 服务器地址 |
 | `redis_password` | Redis 认证密码 |
-| `redis_database` | 档案数据 (DB 0) |
+| `redis_database` | 存档数据 (DB 0) |
 | `redis_database_minion` | Minion 任务 (DB 1) |
 | `redis_database_config` | 配置存储 (DB 2) |
 | `redis_database_search` | 搜索索引 (DB 3) |
@@ -191,54 +191,36 @@ VOLUME [ "/home/koyomi/lanraragi/lib/LANraragi/Plugin/Sideloaded" ]
 | `push-continuous-integration.yml` | 推送时运行测试 |
 | `push-continous-delivery.yml` | 构建 nightly Docker 镜像 |
 | `release-delivery.yml` | 构建发布版 Docker 镜像和 Windows zip |
-| `push-brewtest.yml` | 测试 Homebrew 公式 |
+| `push-brewtest.yml` | 测试 Homebrew 配方 |
 
 ---
 
-## 📋 Go 重构要点
+## ✅ 总结
 
-### 测试迁移
+### 测试框架
 
-| Perl | Go |
-|------|-----|
-| `Test::MockObject` | `testify/mock` |
-| `Test::Deep` | `github.com/stretchr/testify/assert` |
-| `.t` 文件 | `_test.go` 文件 |
-| `prove` | `go test` |
+| 组件 | 工具 |
+|------|------|
+| 测试框架 | Perl `Test::More` |
+| Mock | `Test::MockObject` |
+| 深度比较 | `Test::Deep` |
+| 测试运行器 | `prove` |
 
-### 依赖映射
+### 构建系统
 
-| Perl 依赖 | Go 替代 |
-|-----------|---------|
-| `Redis` | `github.com/redis/go-redis/v9` |
-| `Archive::Libarchive` | `github.com/mholt/archiver/v4` |
-| `Mojolicious` | `github.com/gin-gonic/gin` |
-| `Minion` | `github.com/hibiken/asynq` |
-| `File::ChangeNotify` | `github.com/fsnotify/fsnotify` |
+| 平台 | 方法 |
+|------|------|
+| Docker | 基于 Alpine，s6-overlay |
+| macOS | Homebrew 配方 |
+| Windows | PowerShell 安装程序 |
+| 源码 | 手动 Perl 依赖安装 |
 
-### Docker 适配
+### 关键文件
 
-```dockerfile
-FROM golang:1.22-alpine AS builder
-RUN go build -o lanraragi ./cmd/server
-
-FROM alpine:3.20
-COPY --from=builder /app/lanraragi /usr/local/bin/
-EXPOSE 3000
-VOLUME ["/data/content", "/data/thumb", "/data/database"]
-```
-
----
-
-## ✅ 分析完成统计
-
-| Phase | 状态 | 文档 |
-|-------|------|------|
-| 1. Redis Schema | ✅ | phase1_redis_schema.md |
-| 2. API Routing | ✅ | phase2_api_routing.md |
-| 3. Infrastructure | ✅ | phase3_infrastructure.md |
-| 4. Plugin System | ✅ | phase4_plugin_system.md |
-| 5. Frontend | ✅ | phase5_frontend.md |
-| 6. Model Deep | ✅ | phase6_model_deep.md |
-| 7. Template/I18N | ✅ | phase7_template_i18n.md |
-| 8. Tests/Build | ✅ | phase9_10_tests_build.md |
+| 文件 | 用途 |
+|------|------|
+| `tools/cpanfile` | Perl 依赖 |
+| `tools/build/docker/Dockerfile` | Docker 构建 |
+| `tools/build/homebrew/Lanraragi.rb` | Homebrew 配方 |
+| `tools/build/windows/build-installer.ps1` | Windows 安装程序 |
+| `lrr.conf` | 运行时配置 |

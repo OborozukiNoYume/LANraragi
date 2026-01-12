@@ -1,8 +1,8 @@
-# Phase 5: Frontend Architecture Analysis
+# Frontend Architecture
 
 > Analysis Date: 2026-01-11
 
-This document analyzes LANraragi's JavaScript frontend architecture, providing technical reference for Go refactoring or frontend modernization.
+This document analyzes LANraragi's JavaScript frontend architecture.
 
 ---
 
@@ -28,7 +28,7 @@ This document analyzes LANraragi's JavaScript frontend architecture, providing t
 
 ---
 
-## 📊 index_datatables.js - Table Core (16KB)
+## 📊 index_datatables.js - Table Core
 
 ### Module Structure
 
@@ -316,38 +316,9 @@ sequenceDiagram
 
 ---
 
-## ⚠️ Go Refactoring Considerations
-
-### 1. Base URL Handling
-Currently passed via Cookie `lrr_baseurl`, Go version needs:
-- Inject base URL in templates
-- Or use relative paths
-
-### 2. Authentication State
-Currently passed via `data-user-logged` HTML attribute, options:
-- Continue using template injection
-- Or use `/api/whoami` endpoint
-
-### 3. Progress Storage
-Mixed mode (localStorage + server), maintain compatibility:
-```javascript
-if (authenticatedProgress && isLoggedIn) → Server
-else if (localProgress) → localStorage
-else → Server (anonymous)
-```
-
-### 4. Minion Task Polling
-Currently uses polling, consider:
-- WebSocket real-time push
-- Server-Sent Events (SSE)
-
----
-
 ## 📄 Page Module Analysis
 
-The following frontend page modules were originally omitted from Phase 5:
-
-### batch.js - Batch Operations (336 lines, 11KB)
+### batch.js - Batch Operations
 
 **State Management:**
 ```javascript
@@ -369,7 +340,7 @@ Batch.currentPlugin = "";
 3. Process selected archives one by one via WebSocket
 4. Real-time update progress bar and log
 
-### category.js - Category Management (254 lines, 9KB)
+### category.js - Category Management
 
 **State Management:**
 ```javascript
@@ -393,7 +364,7 @@ Category.categories = [];  // Client-cached category list
 | Add archive | `/api/categories/{catId}/{arcId}` | PUT |
 | Remove archive | `/api/categories/{catId}/{arcId}` | DELETE |
 
-### edit.js - Metadata Editing (244 lines, 7KB)
+### edit.js - Metadata Editing
 
 **Tag Input:**
 - Uses `tagger` library for rich text tag editing
@@ -415,7 +386,7 @@ Edit.runPlugin = function () {
 | Run plugin | `/api/plugins/use?plugin=...&id=...` | POST |
 | Delete archive | `/api/archives/{id}` | DELETE |
 
-### upload.js - Upload Functionality (178 lines, 7KB)
+### upload.js - Upload Functionality
 
 **File Upload:**
 - Uses `jquery-file-upload` plugin

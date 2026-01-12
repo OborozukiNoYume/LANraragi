@@ -1,7 +1,6 @@
-# Phase 1: Complete Redis Schema Analysis
+# Data Layer: Redis Schema
 
-> **Analyzed Files**: `Redis.pm`, `Database.pm`, `Archive.pm`, `Category.pm`, `Tankoubon.pm`, `Config.pm`  
-> **Analysis Date**: 2026-01-11 | **Status**: ✅ Phase 1 Complete
+> **Analyzed Files**: `Redis.pm`, `Database.pm`, `Archive.pm`, `Category.pm`, `Tankoubon.pm`, `Config.pm`
 
 ---
 
@@ -16,16 +15,6 @@ The project uses **4 Redis databases** (logical separation):
 | 2 | `redis_database_config` | `get_redis_config()` | Global config + file mapping |
 | 3 | `redis_database_search` | `get_redis_search()` | Search index + cache |
 
-```go
-// Go Connection Manager Proposal
-type RedisManager struct {
-    Archive *redis.Client  // DB 0
-    Minion  *redis.Client  // DB 1  
-    Config  *redis.Client  // DB 2
-    Search  *redis.Client  // DB 3
-}
-```
-
 ---
 
 ## 🗂️ Complete Schema Definition
@@ -36,23 +25,22 @@ type RedisManager struct {
 |---------|------------|----------|
 | Redis Hash | `{40-char-sha1}` | DB 0 (Archive) |
 
-```go
-type Archive struct {
-    ID           string `redis:"-"`            // Key: SHA-1(first 512KB)
-    Name         string `redis:"name"`         // Filename
-    Title        string `redis:"title"`        // Display title
-    Tags         string `redis:"tags"`         // Comma-separated tags
-    Summary      string `redis:"summary"`      // Description
-    File         string `redis:"file"`         // File path (unencoded)
-    ArcSize      int64  `redis:"arcsize"`      // File size
-    IsNew        string `redis:"isnew"`        // "true"/"false"
-    Progress     int    `redis:"progress"`     // Reading progress
-    PageCount    int    `redis:"pagecount"`    // Total pages
-    LastReadTime int64  `redis:"lastreadtime"` // Unix timestamp
-    ThumbJob     string `redis:"thumbjob"`     // Thumbnail job ID (Minion)
-    ThumbHash    string `redis:"thumbhash"`    // SHA-1 hash of first image
-}
-```
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Original filename |
+| `title` | string | Display title |
+| `tags` | string | Comma-separated tags |
+| `summary` | string | Description |
+| `file` | string | File path (unencoded) |
+| `arcsize` | int64 | File size in bytes |
+| `isnew` | string | "true" or "false" |
+| `progress` | int | Reading progress (page number) |
+| `pagecount` | int | Total pages |
+| `lastreadtime` | int64 | Unix timestamp of last read |
+| `thumbjob` | string | Thumbnail job ID (Minion) |
+| `thumbhash` | string | SHA-1 hash of first image |
 
 ---
 
@@ -66,15 +54,14 @@ type Archive struct {
 - **Static Category**: `search` is empty, `archives` stores JSON array
 - **Dynamic Category**: `search` stores search query, auto-matches archives
 
-```go
-type Category struct {
-    ID       string   `json:"id"`       // Key: SET_1704931200
-    Name     string   `json:"name"`     // Category name
-    Search   string   `json:"search"`   // Dynamic category search query (empty=static)
-    Pinned   string   `json:"pinned"`   // Is pinned
-    Archives []string `json:"archives"` // Static category Archive ID list (JSON)
-}
-```
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Category name |
+| `search` | string | Dynamic category search query (empty = static) |
+| `pinned` | string | Is pinned |
+| `archives` | JSON | Static category Archive ID list |
 
 **Key implementation detail:**
 ```perl
@@ -99,16 +86,6 @@ $redis->hset( $cat_id, "archives", encode_json( \@cat_archives ) );
 | -2 | `tags_{tags}` | Collection tags |
 | 1, 2, 3... | `{archive_id}` | Ordered Archive list |
 
-```go
-type Tankoubon struct {
-    ID       string   `json:"id"`       // Key: TANK_1704931200
-    Name     string   `json:"name"`     // Collection name
-    Summary  string   `json:"summary"`  // Summary
-    Tags     string   `json:"tags"`     // Tags
-    Archives []string `json:"archives"` // Ordered Archive ID list
-}
-```
-
 **Metadata storage mechanism:**
 ```perl
 my %TANK_METADATA = ( "name" => 0, "summary" => -1, "tags" => -2 );
@@ -124,48 +101,35 @@ $redis->zadd( $tank_id, $score, $arc_id );  # Add archive
 |---------|-----|----------|
 | Redis Hash | `LRR_CONFIG` | DB 2 (Config) |
 
-```go
-type AppConfig struct {
-    // Directory config
-    Dirname     string `redis:"dirname"`     // Content directory (default ./content)
-    Thumbdir    string `redis:"thumbdir"`    // Thumbnail directory (default ./thumb)
-    
-    // Display settings
-    HTMLTitle   string `redis:"htmltitle"`   // Page title
-    MOTD        string `redis:"motd"`        // Welcome message
-    Theme       string `redis:"theme"`       // Theme CSS
-    PageSize    int    `redis:"pagesize"`    // Page size (default 100)
-    
-    // Security settings
-    Password    string `redis:"password"`    // bcrypt password hash
-    EnablePass  bool   `redis:"enablepass"`  // Enable password protection
-    APIKey      string `redis:"apikey"`      // API key
-    EnableCORS  bool   `redis:"enablecors"`  // Enable CORS
-    
-    // Feature toggles
-    DevMode        bool `redis:"devmode"`        // Dev mode
-    EnableResize   bool `redis:"enableresize"`   // Enable image resize
-    EnableDateAdd  bool `redis:"usedateadded"`   // Add date tag
-    EnableCryptoFS bool `redis:"enablecryptofs"` // Encrypted file system
-    TagRulesOn     bool `redis:"tagruleson"`     // Enable tag rules
-    
-    // Reader settings
-    LocalProgress  bool `redis:"localprogress"`  // Local progress
-    AuthProgress   bool `redis:"authprogress"`   // Save progress after auth
-    SizeThreshold  int  `redis:"sizethreshold"`  // Resize threshold
-    ReaderQuality  int  `redis:"readerquality"`  // Reader quality
-    
-    // Thumbnail settings
-    HQThumbPages   bool `redis:"hqthumbpages"`   // High quality thumbnails
-    JXLThumbPages  bool `redis:"jxlthumbpages"`  // JXL format thumbnails
-    ReplaceDupe    bool `redis:"replacedupe"`    // Replace duplicates
-    ReplaceTitles  bool `redis:"replacetitles"`  // Replace titles
-    
-    // Special config
-    TagRules      string `redis:"tagrules"`      // Tag filter rules
-    BookmarkLink  string `redis:"bookmark_link"` // Bookmark category ID
-}
-```
+**Main Configuration Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `dirname` | string | Content directory (default ./content) |
+| `thumbdir` | string | Thumbnail directory (default ./thumb) |
+| `htmltitle` | string | Page title |
+| `motd` | string | Welcome message |
+| `theme` | string | Theme CSS |
+| `pagesize` | int | Page size (default 100) |
+| `password` | string | bcrypt password hash |
+| `enablepass` | bool | Enable password protection |
+| `apikey` | string | API key |
+| `enablecors` | bool | Enable CORS |
+| `devmode` | bool | Dev mode |
+| `enableresize` | bool | Enable image resize |
+| `usedateadded` | bool | Add date tag |
+| `enablecryptofs` | bool | Encrypted file system |
+| `tagruleson` | bool | Enable tag rules |
+| `localprogress` | bool | Local progress |
+| `authprogress` | bool | Save progress after auth |
+| `sizethreshold` | int | Resize threshold |
+| `readerquality` | int | Reader quality |
+| `hqthumbpages` | bool | High quality thumbnails |
+| `jxlthumbpages` | bool | JXL format thumbnails |
+| `replacedupe` | bool | Replace duplicates |
+| `replacetitles` | bool | Replace titles |
+| `tagrules` | string | Tag filter rules |
+| `bookmark_link` | string | Bookmark category ID |
 
 ---
 
@@ -234,7 +198,7 @@ erDiagram
 
 ---
 
-## ⚠️ Go Migration Notes
+## ⚠️ Important Notes
 
 ### 1. Category vs Tankoubon Differences
 
@@ -255,79 +219,6 @@ $redis_search->sadd( "LRR_TANKGROUPED", $tank_id );
 
 ### 3. Environment Variable Overrides
 
-```go
-// Some config can be overridden by env vars
-os.Getenv("LRR_DATA_DIRECTORY")   // Override dirname
-os.Getenv("LRR_THUMB_DIRECTORY")  // Override thumbdir
-os.Getenv("LRR_REDIS_ADDRESS")    // Override redis_address
-os.Getenv("LRR_FORCE_DEBUG")      // Force dev mode
-```
-
----
-
-## 📋 Complete Go Struct Definitions
-
-```go
-package model
-
-// ========== Core Entities ==========
-
-type Archive struct {
-    ID           string   `json:"arcid" redis:"-"`
-    Title        string   `json:"title" redis:"title"`
-    Filename     string   `json:"filename" redis:"name"`
-    Tags         string   `json:"tags" redis:"tags"`
-    Summary      string   `json:"summary" redis:"summary"`
-    FilePath     string   `json:"-" redis:"file"`
-    Extension    string   `json:"extension"`
-    IsNew        bool     `json:"isnew"`
-    Progress     int      `json:"progress" redis:"progress"`
-    PageCount    int      `json:"pagecount" redis:"pagecount"`
-    LastReadTime int64    `json:"lastreadtime" redis:"lastreadtime"`
-    Size         int64    `json:"size" redis:"arcsize"`
-}
-
-type Category struct {
-    ID       string   `json:"id"`
-    Name     string   `json:"name"`
-    Search   string   `json:"search"`   // Empty=static, non-empty=dynamic
-    Pinned   string   `json:"pinned"`
-    Archives []string `json:"archives"` // Static category only
-}
-
-type Tankoubon struct {
-    ID       string   `json:"id"`
-    Name     string   `json:"name"`
-    Summary  string   `json:"summary"`
-    Tags     string   `json:"tags"`
-    Archives []string `json:"archives"` // Ordered list
-}
-
-// ========== Redis Key Constants ==========
-
-const (
-    KeyConfig       = "LRR_CONFIG"
-    KeyTitles       = "LRR_TITLES"
-    KeyNew          = "LRR_NEW"
-    KeyUntagged     = "LRR_UNTAGGED"
-    KeyTankGrouped  = "LRR_TANKGROUPED"
-    KeyURLMap       = "LRR_URLMAP"
-    KeySearchCache  = "LRR_SEARCHCACHE"
-    KeyFileMap      = "LRR_FILEMAP"
-    KeyTagRules     = "LRR_TAGRULES"
-    
-    PrefixTagIndex  = "INDEX_"
-    PrefixCategory  = "SET_"
-    PrefixTankoubon = "TANK_"
-)
-```
-
----
-
-## 🌍 Environment Variables (Official)
-
-These variables can override default behavior:
-
 | Variable | Description |
 |----------|-------------|
 | `LRR_DATA_DIRECTORY` | Content folder override |
@@ -340,22 +231,17 @@ These variables can override default behavior:
 
 ---
 
-## 🔑 Archive ID Computation (Official)
+## 🔑 Archive ID Computation
 
 Archive IDs are computed by:
 1. Reading the **first 512KB** of the archive file
 2. Computing a **SHA-1 hash** from this data
 
-```perl
-# From LANraragi::Utils::Database
-# Archive ID = SHA-1 of first 512KB
-```
-
 > **Note**: This means two archives with identical first 512KB will have the same ID, even if the rest differs.
 
 ---
 
-## 🔍 Search Cache Key Format (Official)
+## 🔍 Search Cache Key Format
 
 Search results are cached in `LRR_SEARCHCACHE` with composite keys:
 
@@ -371,7 +257,7 @@ The cache is busted when:
 
 ---
 
-## ✅ Phase 1 Summary
+## ✅ Summary
 
 | Entity | Storage Type | Key Format | Database |
 |--------|--------------|------------|----------|
@@ -382,6 +268,3 @@ The cache is busted when:
 | File Map | Hash | `LRR_FILEMAP` | DB 2 |
 | Plugin Settings | Hash | `LRR_PLUGIN_{namespace}` | DB 2 |
 | Search Index | Set/ZSet/Hash | Various | DB 3 |
-
-**Phase 1 data layer analysis complete!** Ready to proceed to Phase 2: API Layer Analysis.
-

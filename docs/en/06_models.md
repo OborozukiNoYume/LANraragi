@@ -1,8 +1,8 @@
-# Phase 6: Model Layer Deep Analysis
+# Model Layer Deep Analysis
 
 > Analysis Date: 2026-01-11
 
-This document supplements the analysis of Model layer business logic not covered in Phase 1.
+This document provides detailed analysis of the Model layer business logic.
 
 ---
 
@@ -21,7 +21,7 @@ This document supplements the analysis of Model layer business logic not covered
 
 ---
 
-## 🔍 Search.pm - Core Search Engine (20KB)
+## 🔍 Search.pm - Core Search Engine
 
 ### Core Functions
 
@@ -100,7 +100,7 @@ LUA
 
 ---
 
-## 📚 Tankoubon.pm - Collection System (16KB)
+## 📚 Tankoubon.pm - Collection System
 
 ### Concept
 
@@ -415,7 +415,7 @@ LANraragi::Model::Archive::serve_page($mojo, $id, $image);
 
 ---
 
-## 📂 Category.pm - Category Management Model (10KB)
+## 📂 Category.pm - Category Management Model
 
 ### Concept
 
@@ -460,7 +460,7 @@ remove_bookmark_link();
 
 ---
 
-## 📊 Stats.pm - Statistics and Index Building (9KB)
+## 📊 Stats.pm - Statistics and Index Building
 
 ### Core Function
 
@@ -507,24 +507,3 @@ flowchart TD
 | `is_url_recorded($url)` | Check if URL is already in library |
 | `build_tag_stats($minscore)` | Build tag cloud JSON |
 | `compute_content_size()` | Calculate library total size (GB) |
-
----
-
-## 📋 Go Refactoring Key Points
-
-### 1. Upload Processing
-- Two-phase move strategy must be preserved
-- ID computation must be compatible with Perl version (SHA1)
-- `LRR_URLMAP` index must be maintained in sync
-
-### 2. Backup/Restore
-- JSON structure as data exchange format should remain compatible
-- Restore should support incremental restore (update existing only)
-
-### 3. OPDS
-- Use Go XML templates to replace Template Toolkit
-- Tag namespace parsing logic needs porting
-
-### 4. Reader
-- Image resizing can use `disintegration/imaging` or `davidbyttow/govips`
-- URI encoding handling must remain consistent

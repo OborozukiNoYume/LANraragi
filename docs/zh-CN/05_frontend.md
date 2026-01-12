@@ -1,20 +1,20 @@
-# Phase 5: Frontend 前端架构分析
+# 前端架构
 
-> 分析时间: 2026-01-11
+> 分析日期: 2026-01-11
 
-本文档分析 LANraragi 的 JavaScript 前端架构，为 Go 重构或前端现代化提供技术参考。
+本文档分析 LANraragi 的 JavaScript 前端架构。
 
 ---
 
-## 📊 核心模块概览
+## 📊 核心模块概述
 
 | 文件 | 行数 | 主要职责 | 关键依赖 |
 |------|------|----------|----------|
-| `common.js` | 486 | 全局工具函数、UI 组件构建 | jQuery, React (toast), SweetAlert2 |
-| `server.js` | 346 | API 客户端、异步任务轮询 | fetch API, LRR 命名空间 |
+| `common.js` | 486 | 全局工具，UI 组件构建 | jQuery, React (toast), SweetAlert2 |
+| `server.js` | 346 | API 客户端，异步任务轮询 | fetch API, LRR 命名空间 |
 | `reader.js` | 1143 | 阅读器核心逻辑 | fscreen (全屏), LRR/Server |
 | `index.js` | 1040 | 首页/列表页逻辑 | DataTables, Swiper, Awesomplete |
-| `index_datatables.js` | 413 | **DataTables 配置与渲染** | DataTables, tippy.js |
+| `index_datatables.js` | 413 | **DataTables 配置和渲染** | DataTables, tippy.js |
 | `batch.js` | ~350 | 批量标签操作 | Server API |
 | `category.js` | ~300 | 分类管理页面 | Server API |
 | `edit.js` | ~250 | 元数据编辑 | Server API |
@@ -28,7 +28,7 @@
 
 ---
 
-## 📊 index_datatables.js - 表格核心 (16KB)
+## 📊 index_datatables.js - 表格核心
 
 ### 模块结构
 
@@ -62,7 +62,7 @@ IndexTable.dataTable = $(".datatables").DataTable({
 
 ### 双视图模式
 
-| 模式 | 存储键 | 渲染方式 |
+| 模式 | 存储键 | 渲染方法 |
 |------|--------|----------|
 | **列表模式** | `indexViewMode=0` | 标准 `<table>` 渲染 |
 | **缩略图模式** | `indexViewMode=1` | 动态创建 `#thumbs_container` |
@@ -80,15 +80,15 @@ IndexTable.createdRow = function(row, data) {
 
 ### URL 状态管理
 
-支持 pushState/popState 保持搜索状态：
+支持 pushState/popState 以持久化搜索状态：
 
 ```javascript
-// URL 参数构建
+// 构建 URL 参数
 IndexTable.buildURLParameters = function() {
     return `?p=${page}&sort=${sortby}&sortdir=${sortorder}&q=${search}&c=${category}`;
 };
 
-// URL 参数消费
+// 消费 URL 参数
 IndexTable.consumeURLParameters = function() {
     const params = new URLSearchParams(window.location.search);
     if (params.has("q")) IndexTable.currentSearch = params.get("q");
@@ -101,12 +101,12 @@ IndexTable.consumeURLParameters = function() {
 
 ### 1. LRR 全局命名空间 (`common.js`)
 
-核心工具类，被所有页面引用：
+核心工具类，所有页面引用：
 
 ```javascript
 const LRR = {};
 
-// URL 封装类 - 处理 Base URL
+// URL 包装类 - 处理 Base URL
 LRR.apiURL = class {
     static base_url = _get_baseurl_cookie();
     constructor(load_url) { ... }
@@ -114,7 +114,7 @@ LRR.apiURL = class {
 };
 ```
 
-**关键功能:**
+**关键函数：**
 
 | 函数 | 用途 |
 |------|------|
@@ -123,11 +123,11 @@ LRR.apiURL = class {
 | `buildTagsDiv(tags)` | 生成可点击标签 HTML |
 | `buildThumbnailDiv(data)` | 构建缩略图卡片组件 |
 | `getProgress(arcdata)` | 获取阅读进度（本地/服务器） |
-| `showErrorToast()` / `toast()` | Toast 通知（迁移到 react-toastify） |
+| `showErrorToast()` / `toast()` | Toast 通知（已迁移到 react-toastify） |
 
-**数据流向:**
+**数据流：**
 ```
-Template (tt2) → data-* 属性 → LRR.isUserLogged() → JS 逻辑
+模板 (tt2) → data-* 属性 → LRR.isUserLogged() → JS 逻辑
 Cookie (lrr_baseurl) → LRR.apiURL.base_url → API 请求
 localStorage → 阅读进度/用户偏好 → UI 状态
 ```
@@ -151,7 +151,7 @@ Server.callAPIBody(endpoint, method, body, successMessage, errorMessage, success
 Server.checkJobStatus(jobId, useDetail, callback, failureCallback, progressCallback)
 ```
 
-**API 端点使用统计:**
+**API 端点使用统计：**
 
 | 端点模式 | 调用位置 | HTTP 方法 |
 |----------|----------|-----------|
@@ -164,7 +164,7 @@ Server.checkJobStatus(jobId, useDetail, callback, failureCallback, progressCallb
 | `/api/search` | index | GET |
 | `/api/database/stats` | index | GET |
 
-**错误处理模式:**
+**错误处理模式：**
 ```javascript
 fetch(endpoint)
     .then(response => response.ok ? response.json() : { success: 0, error: ... })
@@ -174,12 +174,12 @@ fetch(endpoint)
 
 ---
 
-### 3. 阅读器模块 (`reader.js`)
+### 3. Reader 模块 (`reader.js`)
 
-**状态管理:**
+**状态管理：**
 ```javascript
-Reader.id = "";              // 当前 Archive ID
-Reader.currentPage = -1;     // 当前页码 (0-indexed)
+Reader.id = "";              // 当前存档 ID
+Reader.currentPage = -1;     // 当前页码（0 索引）
 Reader.pages = [];           // 页面 URL 列表
 Reader.preloadedImg = {};    // 预加载图片缓存
 Reader.mangaMode = false;    // 右→左阅读
@@ -187,27 +187,27 @@ Reader.doublePageMode = false; // 双页模式
 Reader.infiniteScroll = false; // 无限滚动
 ```
 
-**键盘快捷键:**
+**键盘快捷键：**
 
 | 按键 | 功能 |
 |------|------|
 | ← / A | 上一页 |
 | → / D | 下一页 |
-| Space | 滚动/翻页 (智能判断) |
+| Space | 滚动/翻页（智能检测） |
 | M | 切换漫画模式 |
 | P | 切换双页模式 |
 | F | 全屏 |
-| Q | 打开缩略图 overlay |
+| Q | 打开缩略图覆盖层 |
 | B | 切换书签 |
 | R | 随机漫画 |
 
-**图片预加载策略:**
+**图片预加载策略：**
 ```javascript
 Reader.preloadImages = function () {
     let preloadNext = Reader.preloadCount;  // 默认预加载数量
     let preloadPrev = Reader.preloadCount == 0 ? 0 : 1;
     
-    // 双页模式时翻倍
+    // 双页模式下翻倍
     if (Reader.doublePageMode) { preloadNext *= 2; preloadPrev *= 2; }
     
     for (let i = 1; i <= preloadNext; i++) {
@@ -216,7 +216,7 @@ Reader.preloadImages = function () {
 };
 ```
 
-**进度追踪逻辑:**
+**进度追踪逻辑：**
 ```javascript
 Reader.updateProgress = function () {
     if (Reader.authenticateProgress && LRR.isUserLogged()) {
@@ -231,14 +231,14 @@ Reader.updateProgress = function () {
 
 ---
 
-### 4. 首页模块 (`index.js`)
+### 4. Index 模块 (`index.js`)
 
-**DataTables 集成:**
+**DataTables 集成：**
 - 服务端分页 (`serverSide: true`)
 - 自定义列排序
-- 虚拟滚动 (大数据集)
+- 虚拟滚动（用于大数据集）
 
-**轮播图 (Carousel):**
+**轮播：**
 ```javascript
 // Swiper 配置
 Index.swiper = new Swiper(".index-carousel-container", {
@@ -256,7 +256,7 @@ switch (localStorage.carouselType) {
 }
 ```
 
-**标签自动补全:**
+**标签自动完成：**
 ```javascript
 Index.loadTagSuggestions = function () {
     Server.callAPI("/api/database/stats?minweight=2", "GET", null, ...,
@@ -272,10 +272,10 @@ Index.loadTagSuggestions = function () {
 
 ---
 
-## 📦 localStorage 使用情况
+## 📦 localStorage 使用
 
-| Key | 用途 | 默认值 |
-|-----|------|--------|
+| 键 | 用途 | 默认值 |
+|----|------|--------|
 | `indexViewMode` | 列表/缩略图视图 | `1` (缩略图) |
 | `cropthumbs` | 裁剪缩略图 | `true` |
 | `mangaMode` | 漫画阅读方向 | `false` |
@@ -284,13 +284,13 @@ Index.loadTagSuggestions = function () {
 | `{archiveId}-reader` | 阅读进度 | - |
 | `bookmarkCategoryId` | 书签分类 ID | - |
 | `customColumn1/2` | 自定义列命名空间 | `artist/series` |
-| `carouselType` | 轮播图类型 | `ondeck` |
+| `carouselType` | 轮播类型 | `ondeck` |
 
 ---
 
 ## 🔗 前后端交互流程
 
-### 阅读器初始化
+### Reader 初始化
 ```mermaid
 sequenceDiagram
     Reader->>Server: GET /api/archives/{id}/metadata
@@ -316,40 +316,11 @@ sequenceDiagram
 
 ---
 
-## ⚠️ Go 重构注意事项
-
-### 1. Base URL 处理
-当前通过 Cookie 传递 `lrr_baseurl`，Go 版本需要:
-- 在模板中注入 base URL
-- 或使用相对路径
-
-### 2. 认证状态
-当前通过 `data-user-logged` HTML 属性传递，选项:
-- 继续使用模板注入
-- 或使用 `/api/whoami` 端点
-
-### 3. 进度存储
-混合模式（localStorage + 服务器），需保持兼容:
-```javascript
-if (authenticatedProgress && isLoggedIn) → Server
-else if (localProgress) → localStorage
-else → Server (匿名)
-```
-
-### 4. Minion 任务轮询
-当前使用轮询方式，可考虑:
-- WebSocket 实时推送
-- Server-Sent Events (SSE)
-
----
-
 ## 📄 页面模块分析
 
-以下是 Phase 5 原遗漏的前端页面模块分析：
+### batch.js - 批量操作
 
-### batch.js - 批量操作 (336行, 11KB)
-
-**状态管理:**
+**状态管理：**
 ```javascript
 const Batch = {};
 Batch.treatedArchives = 0;
@@ -358,71 +329,64 @@ Batch.currentOperation = "";  // "plugin" | "delete" | "tagrules" | "addcat" | "
 Batch.currentPlugin = "";
 ```
 
-**WebSocket 通信:**
-- 使用 WebSocket 连接 `/batch/socket` 进行实时任务推送
-- 支持操作：插件执行、删除、标签规则、添加到分类、清除新标记
+**WebSocket 通信：**
+- 使用 WebSocket 连接到 `/batch/socket` 进行实时任务推送
+- 支持的操作：插件执行、删除、标签规则、添加到分类、清除新标记
 - 每次操作完成后自动清除搜索缓存
 
-**关键流程:**
-1. 加载所有档案列表 (`/api/archives`)
-2. 自动勾选未标记档案 (`/api/archives/untagged`)
-3. 通过 WebSocket 逐个处理选中档案
+**关键流程：**
+1. 加载所有存档列表 (`/api/archives`)
+2. 自动选择未打标签的存档 (`/api/archives/untagged`)
+3. 通过 WebSocket 逐个处理选中的存档
 4. 实时更新进度条和日志
 
-### category.js - 分类管理 (254行, 9KB)
+### category.js - 分类管理
 
-**状态管理:**
+**状态管理：**
 ```javascript
 const Category = {};
 Category.categories = [];  // 客户端缓存的分类列表
 ```
 
-**核心功能:**
+**核心功能：**
 - 创建静态/动态分类
 - 查看/编辑分类详情
-- 管理分类内的档案列表
+- 管理分类内的存档列表
 - 书签链接功能 (localStorage + API)
 
-**API 交互:**
+**API 交互：**
 | 操作 | 端点 | 方法 |
 |------|------|------|
 | 获取列表 | `/api/categories` | GET |
 | 创建 | `/api/categories?name=...&search=...` | PUT |
 | 更新 | `/api/categories/{id}?name=...` | PUT |
 | 删除 | `/api/categories/{id}` | DELETE |
-| 添加档案 | `/api/categories/{catId}/{arcId}` | PUT |
-| 移除档案 | `/api/categories/{catId}/{arcId}` | DELETE |
+| 添加存档 | `/api/categories/{catId}/{arcId}` | PUT |
+| 移除存档 | `/api/categories/{catId}/{arcId}` | DELETE |
 
-### edit.js - 元数据编辑 (244行, 7KB)
+### edit.js - 元数据编辑
 
-**标签输入:**
-- 使用 `tagger` 库实现富文本标签编辑
-- 支持自动补全 (基于 `/api/database/stats`)
-- 粘贴自动拆分逗号分隔的标签
+**标签输入：**
+- 使用 `tagger` 库进行富文本标签编辑
+- 支持自动完成（基于 `/api/database/stats`）
+- 粘贴自动分割逗号分隔的标签
 
-**插件集成:**
+**插件集成：**
 ```javascript
 Edit.runPlugin = function () {
     Edit.saveMetadata().then(() => Edit.getTags());
 };
-// 先保存当前元数据，再运行插件获取新标签
+// 先保存当前元数据，然后运行插件获取新标签
 ```
 
-**API 交互:**
-| 操作 | 端点 | 方法 |
-|------|------|------|
-| 保存元数据 | `/api/archives/{id}/metadata` | PUT |
-| 运行插件 | `/api/plugins/use?plugin=...&id=...` | POST |
-| 删除档案 | `/api/archives/{id}` | DELETE |
+### upload.js - 上传功能
 
-### upload.js - 上传功能 (178行, 7KB)
-
-**文件上传:**
+**文件上传：**
 - 使用 `jquery-file-upload` 插件
-- 支持分类选择 (`catid` 参数)
+- 支持分类选择（`catid` 参数）
 - 上传后通过 Minion Job 异步处理
 
-**URL 下载:**
+**URL 下载：**
 ```javascript
 Upload.downloadUrl = function () {
     // 每行一个 URL，并行提交到 /api/download_url
@@ -430,7 +394,7 @@ Upload.downloadUrl = function () {
 };
 ```
 
-**进度追踪:**
+**进度追踪：**
 - `processingArchives`: 处理中
 - `completedArchives`: 已完成
 - `failedArchives`: 失败
@@ -438,14 +402,14 @@ Upload.downloadUrl = function () {
 
 ---
 
-## 📋 前端依赖清单
+## 📋 前端依赖列表
 
 | 库 | 版本 | 用途 |
 |----|------|------|
 | jQuery | 3.x | DOM 操作 |
 | DataTables | 1.x | 表格组件 |
-| Swiper | 8.x | 轮播图 |
-| Awesomplete | 1.x | 自动补全 |
+| Swiper | 8.x | 轮播 |
+| Awesomplete | 1.x | 自动完成 |
 | SweetAlert2 | 11.x | 弹窗组件 |
 | react-toastify | 9.x | Toast 通知 |
 | fscreen | 1.x | 全屏 API |

@@ -1,4 +1,4 @@
-# Phase 8-9: Testing and Build System Analysis
+# Testing and Build System
 
 > Analysis Date: 2026-01-11
 
@@ -138,7 +138,7 @@ VOLUME [ "/home/koyomi/lanraragi/database" ]
 VOLUME [ "/home/koyomi/lanraragi/lib/LANraragi/Plugin/Sideloaded" ]
 ```
 
-### Docker Environment Variables (Official)
+### Docker Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -195,50 +195,32 @@ VOLUME [ "/home/koyomi/lanraragi/lib/LANraragi/Plugin/Sideloaded" ]
 
 ---
 
-## 📋 Go Refactoring Key Points
+## ✅ Summary
 
-### Test Migration
+### Test Framework
 
-| Perl | Go |
-|------|-----|
-| `Test::MockObject` | `testify/mock` |
-| `Test::Deep` | `github.com/stretchr/testify/assert` |
-| `.t` files | `_test.go` files |
-| `prove` | `go test` |
+| Component | Tool |
+|-----------|------|
+| Test Framework | Perl `Test::More` |
+| Mocking | `Test::MockObject` |
+| Deep Comparison | `Test::Deep` |
+| Test Runner | `prove` |
 
-### Dependency Mapping
+### Build System
 
-| Perl Dependency | Go Alternative |
-|-----------------|----------------|
-| `Redis` | `github.com/redis/go-redis/v9` |
-| `Archive::Libarchive` | `github.com/mholt/archiver/v4` |
-| `Mojolicious` | `github.com/gin-gonic/gin` |
-| `Minion` | `github.com/hibiken/asynq` |
-| `File::ChangeNotify` | `github.com/fsnotify/fsnotify` |
+| Platform | Method |
+|----------|--------|
+| Docker | Alpine-based, s6-overlay |
+| macOS | Homebrew formula |
+| Windows | PowerShell installer |
+| Source | Manual Perl dependency install |
 
-### Docker Adaptation
+### Key Files
 
-```dockerfile
-FROM golang:1.22-alpine AS builder
-RUN go build -o lanraragi ./cmd/server
-
-FROM alpine:3.20
-COPY --from=builder /app/lanraragi /usr/local/bin/
-EXPOSE 3000
-VOLUME ["/data/content", "/data/thumb", "/data/database"]
-```
-
----
-
-## ✅ Analysis Completion Statistics
-
-| Phase | Status | Document |
-|-------|--------|----------|
-| 1. Redis Schema | ✅ | phase1_redis_schema.md |
-| 2. API Routing | ✅ | phase2_api_routing.md |
-| 3. Infrastructure | ✅ | phase3_infrastructure.md |
-| 4. Plugin System | ✅ | phase4_plugin_system.md |
-| 5. Frontend | ✅ | phase5_frontend.md |
-| 6. Model Deep | ✅ | phase6_model_deep.md |
-| 7. Template/I18N | ✅ | phase7_template_i18n.md |
-| 8. Tests/Build | ✅ | phase8_9_tests_build.md |
+| File | Purpose |
+|------|---------|
+| `tools/cpanfile` | Perl dependencies |
+| `tools/build/docker/Dockerfile` | Docker build |
+| `tools/build/homebrew/Lanraragi.rb` | Homebrew formula |
+| `tools/build/windows/build-installer.ps1` | Windows installer |
+| `lrr.conf` | Runtime configuration |
