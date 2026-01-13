@@ -511,10 +511,10 @@ sub update_indexes ( $id, $oldtags, $newtags ) {
         }
 
         # Tag is lowercased here to avoid redundancy/dupes
-        $tag = lc($tag);
+        $tag = LANraragi::Utils::Redis::redis_encode( lc($tag) );
 
         # Update tag index and stats for the tag
-        $redis->srem( "INDEX_" . LANraragi::Utils::Redis::redis_encode($tag), $id );
+        $redis->srem( "INDEX_" . $tag, $id );
         $redis->zincrby( "LRR_STATS", -1, $tag );
     }
 
@@ -529,10 +529,10 @@ sub update_indexes ( $id, $oldtags, $newtags ) {
             $redis->hset( "LRR_URLMAP", $url, $id );
         }
 
-        $tag = lc($tag);
+        $tag = LANraragi::Utils::Redis::redis_encode( lc($tag) );
 
         # Update tag index and stats for the tag
-        $redis->sadd( "INDEX_" . LANraragi::Utils::Redis::redis_encode($tag), $id );
+        $redis->sadd( "INDEX_" . $tag, $id );
         $redis->zincrby( "LRR_STATS", 1, $tag );
     }
 
