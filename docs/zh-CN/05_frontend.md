@@ -1,20 +1,20 @@
 # 前端架构
 
-> 分析日期: 2026-01-11
+> 分析日期：2026-01-11
 
 本文档分析 LANraragi 的 JavaScript 前端架构。
 
 ---
 
-## 📊 核心模块概述
+## 📊 核心模块概览
 
 | 文件 | 行数 | 主要职责 | 关键依赖 |
 |------|------|----------|----------|
-| `common.js` | 486 | 全局工具，UI 组件构建 | jQuery, React (toast), SweetAlert2 |
-| `server.js` | 346 | API 客户端，异步任务轮询 | fetch API, LRR 命名空间 |
+| `common.js` | 486 | 全局工具、UI 组件构建 | jQuery, React (toast), SweetAlert2 |
+| `server.js` | 346 | API 客户端、异步任务轮询 | fetch API, LRR 命名空间 |
 | `reader.js` | 1143 | 阅读器核心逻辑 | fscreen (全屏), LRR/Server |
 | `index.js` | 1040 | 首页/列表页逻辑 | DataTables, Swiper, Awesomplete |
-| `index_datatables.js` | 413 | **DataTables 配置和渲染** | DataTables, tippy.js |
+| `index_datatables.js` | 413 | **DataTables 配置与渲染** | DataTables, tippy.js |
 | `batch.js` | ~350 | 批量标签操作 | Server API |
 | `category.js` | ~300 | 分类管理页面 | Server API |
 | `edit.js` | ~250 | 元数据编辑 | Server API |
@@ -34,10 +34,10 @@
 
 ```javascript
 const IndexTable = {
-    dataTable: {},           // DataTables 实例
-    originalTitle: "",       // 原始页面标题
-    isComingFromPopstate: false,  // 浏览器历史状态
-    currentSearch: ""        // 当前搜索词
+    dataTable: {},           // DataTables instance
+    originalTitle: "",       // Original page title
+    isComingFromPopstate: false,  // Browser history state
+    currentSearch: ""        // Current search term
 };
 ```
 
@@ -45,13 +45,13 @@ const IndexTable = {
 
 ```javascript
 IndexTable.dataTable = $(".datatables").DataTable({
-    serverSide: true,        // 服务端分页
+    serverSide: true,        // Server-side pagination
     processing: true,
     ajax: { url: "search", cache: true },
-    deferRender: true,       // 延迟渲染
+    deferRender: true,       // Deferred rendering
     lengthChange: false,
     pageLength: Index.pageSize,
-    order: [[0, "asc"]],     // 默认按标题排序
+    order: [[0, "asc"]],     // Default sort by title
     columns: [
         { data: null, name: "title", render: IndexTable.renderTitle },
         { data: "tags", name: "customColumn1", render: IndexTable.renderColumn },
@@ -62,7 +62,7 @@ IndexTable.dataTable = $(".datatables").DataTable({
 
 ### 双视图模式
 
-| 模式 | 存储键 | 渲染方法 |
+| 模式 | 存储键 | 渲染方式 |
 |------|--------|----------|
 | **列表模式** | `indexViewMode=0` | 标准 `<table>` 渲染 |
 | **缩略图模式** | `indexViewMode=1` | 动态创建 `#thumbs_container` |
@@ -72,7 +72,7 @@ IndexTable.createdRow = function(row, data) {
     row.id = data.arcid;
     row.classList.add('context-menu');
     if (localStorage.indexViewMode === "1") {
-        // 缩略图模式：创建缩略图 div
+        // Thumbnail mode: create thumbnail div
         $("#thumbs_container").append(LRR.buildThumbnailDiv(data));
     }
 };
@@ -80,15 +80,15 @@ IndexTable.createdRow = function(row, data) {
 
 ### URL 状态管理
 
-支持 pushState/popState 以持久化搜索状态：
+支持 pushState/popState 持久化搜索状态：
 
 ```javascript
-// 构建 URL 参数
+// Build URL parameters
 IndexTable.buildURLParameters = function() {
     return `?p=${page}&sort=${sortby}&sortdir=${sortorder}&q=${search}&c=${category}`;
 };
 
-// 消费 URL 参数
+// Consume URL parameters
 IndexTable.consumeURLParameters = function() {
     const params = new URLSearchParams(window.location.search);
     if (params.has("q")) IndexTable.currentSearch = params.get("q");
@@ -101,12 +101,12 @@ IndexTable.consumeURLParameters = function() {
 
 ### 1. LRR 全局命名空间 (`common.js`)
 
-核心工具类，所有页面引用：
+核心工具类，被所有页面引用：
 
 ```javascript
 const LRR = {};
 
-// URL 包装类 - 处理 Base URL
+// URL wrapper class - handles Base URL
 LRR.apiURL = class {
     static base_url = _get_baseurl_cookie();
     constructor(load_url) { ... }
@@ -123,13 +123,13 @@ LRR.apiURL = class {
 | `buildTagsDiv(tags)` | 生成可点击标签 HTML |
 | `buildThumbnailDiv(data)` | 构建缩略图卡片组件 |
 | `getProgress(arcdata)` | 获取阅读进度（本地/服务器） |
-| `showErrorToast()` / `toast()` | Toast 通知（已迁移到 react-toastify） |
+| `showErrorToast()` / `toast()` | Toast 通知（已迁移至 react-toastify） |
 
 **数据流：**
 ```
-模板 (tt2) → data-* 属性 → LRR.isUserLogged() → JS 逻辑
-Cookie (lrr_baseurl) → LRR.apiURL.base_url → API 请求
-localStorage → 阅读进度/用户偏好 → UI 状态
+Template (tt2) → data-* attributes → LRR.isUserLogged() → JS logic
+Cookie (lrr_baseurl) → LRR.apiURL.base_url → API requests
+localStorage → Reading progress/User preferences → UI state
 ```
 
 ---
@@ -141,13 +141,13 @@ localStorage → 阅读进度/用户偏好 → UI 状态
 ```javascript
 const Server = {};
 
-// 通用 API 调用
+// Generic API call
 Server.callAPI(endpoint, method, successMessage, errorMessage, successCallback)
 
-// 带请求体的 API 调用
+// API call with request body
 Server.callAPIBody(endpoint, method, body, successMessage, errorMessage, successCallback)
 
-// Minion 任务轮询
+// Minion task polling
 Server.checkJobStatus(jobId, useDetail, callback, failureCallback, progressCallback)
 ```
 
@@ -174,17 +174,17 @@ fetch(endpoint)
 
 ---
 
-### 3. Reader 模块 (`reader.js`)
+### 3. 阅读器模块 (`reader.js`)
 
 **状态管理：**
 ```javascript
-Reader.id = "";              // 当前存档 ID
-Reader.currentPage = -1;     // 当前页码（0 索引）
-Reader.pages = [];           // 页面 URL 列表
-Reader.preloadedImg = {};    // 预加载图片缓存
-Reader.mangaMode = false;    // 右→左阅读
-Reader.doublePageMode = false; // 双页模式
-Reader.infiniteScroll = false; // 无限滚动
+Reader.id = "";              // Current Archive ID
+Reader.currentPage = -1;     // Current page (0-indexed)
+Reader.pages = [];           // Page URL list
+Reader.preloadedImg = {};    // Preloaded image cache
+Reader.mangaMode = false;    // Right→Left reading
+Reader.doublePageMode = false; // Double page mode
+Reader.infiniteScroll = false; // Infinite scroll
 ```
 
 **键盘快捷键：**
@@ -197,17 +197,17 @@ Reader.infiniteScroll = false; // 无限滚动
 | M | 切换漫画模式 |
 | P | 切换双页模式 |
 | F | 全屏 |
-| Q | 打开缩略图覆盖层 |
+| Q | 打开缩略图叠加层 |
 | B | 切换书签 |
 | R | 随机漫画 |
 
-**图片预加载策略：**
+**图像预加载策略：**
 ```javascript
 Reader.preloadImages = function () {
-    let preloadNext = Reader.preloadCount;  // 默认预加载数量
+    let preloadNext = Reader.preloadCount;  // Default preload count
     let preloadPrev = Reader.preloadCount == 0 ? 0 : 1;
     
-    // 双页模式下翻倍
+    // Double in double page mode
     if (Reader.doublePageMode) { preloadNext *= 2; preloadPrev *= 2; }
     
     for (let i = 1; i <= preloadNext; i++) {
@@ -216,14 +216,14 @@ Reader.preloadImages = function () {
 };
 ```
 
-**进度追踪逻辑：**
+**进度跟踪逻辑：**
 ```javascript
 Reader.updateProgress = function () {
     if (Reader.authenticateProgress && LRR.isUserLogged()) {
-        // 已登录用户 → 服务器存储
+        // Logged in user → Server storage
         Server.callAPI(`/api/archives/${Reader.id}/progress/${Reader.currentPage + 1}`, "PUT");
     } else if (Reader.trackProgressLocally) {
-        // 未登录/本地模式 → localStorage
+        // Not logged in/Local mode → localStorage
         localStorage.setItem(`${Reader.id}-reader`, Reader.currentPage + 1);
     }
 };
@@ -231,7 +231,7 @@ Reader.updateProgress = function () {
 
 ---
 
-### 4. Index 模块 (`index.js`)
+### 4. 首页模块 (`index.js`)
 
 **DataTables 集成：**
 - 服务端分页 (`serverSide: true`)
@@ -240,14 +240,14 @@ Reader.updateProgress = function () {
 
 **轮播：**
 ```javascript
-// Swiper 配置
+// Swiper configuration
 Index.swiper = new Swiper(".index-carousel-container", {
-    virtual: { enabled: true },  // 虚拟化渲染
+    virtual: { enabled: true },  // Virtualized rendering
     mousewheel: true,
     navigation: { nextEl: ".carousel-next", prevEl: ".carousel-prev" }
 });
 
-// 数据源切换
+// Data source switching
 switch (localStorage.carouselType) {
     case "random":   endpoint = `/api/search/random?...`;
     case "inbox":    endpoint = `/api/search?newonly=true...`;
@@ -256,7 +256,7 @@ switch (localStorage.carouselType) {
 }
 ```
 
-**标签自动完成：**
+**标签自动补全：**
 ```javascript
 Index.loadTagSuggestions = function () {
     Server.callAPI("/api/database/stats?minweight=2", "GET", null, ...,
@@ -264,7 +264,7 @@ Index.loadTagSuggestions = function () {
             Index.awesomplete = new Awesomplete(searchInput, {
                 list: data.map(tag => ({ label: tag.text, value: tag.text })),
                 filter: (text, input) => ...,
-                sort: (a, b) => b.weight - a.weight  // 按权重排序
+                sort: (a, b) => b.weight - a.weight  // Sort by weight
             });
         });
 };
@@ -290,7 +290,7 @@ Index.loadTagSuggestions = function () {
 
 ## 🔗 前后端交互流程
 
-### Reader 初始化
+### 阅读器初始化
 ```mermaid
 sequenceDiagram
     Reader->>Server: GET /api/archives/{id}/metadata
@@ -305,13 +305,13 @@ sequenceDiagram
 ### 搜索流程
 ```mermaid
 sequenceDiagram
-    User->>Index: 输入搜索词
-    Index->>Awesomplete: 显示建议
-    User->>Index: 提交搜索
+    User->>Index: Enter search term
+    Index->>Awesomplete: Show suggestions
+    User->>Index: Submit search
     Index->>DataTables: search()
     DataTables->>Server: GET /api/search?filter=...
     Server-->>DataTables: {data: [...], recordsTotal, recordsFiltered}
-    DataTables->>Index: 渲染结果
+    DataTables->>Index: Render results
 ```
 
 ---
@@ -330,14 +330,14 @@ Batch.currentPlugin = "";
 ```
 
 **WebSocket 通信：**
-- 使用 WebSocket 连接到 `/batch/socket` 进行实时任务推送
+- 使用 WebSocket 连接 `/batch/socket` 进行实时任务推送
 - 支持的操作：插件执行、删除、标签规则、添加到分类、清除新标记
 - 每次操作完成后自动清除搜索缓存
 
 **关键流程：**
-1. 加载所有存档列表 (`/api/archives`)
-2. 自动选择未打标签的存档 (`/api/archives/untagged`)
-3. 通过 WebSocket 逐个处理选中的存档
+1. 加载所有档案列表 (`/api/archives`)
+2. 自动选择未标记档案 (`/api/archives/untagged`)
+3. 通过 WebSocket 逐个处理选中的档案
 4. 实时更新进度条和日志
 
 ### category.js - 分类管理
@@ -345,13 +345,13 @@ Batch.currentPlugin = "";
 **状态管理：**
 ```javascript
 const Category = {};
-Category.categories = [];  // 客户端缓存的分类列表
+Category.categories = [];  // Client-cached category list
 ```
 
 **核心功能：**
 - 创建静态/动态分类
 - 查看/编辑分类详情
-- 管理分类内的存档列表
+- 管理分类内的档案列表
 - 书签链接功能 (localStorage + API)
 
 **API 交互：**
@@ -361,23 +361,30 @@ Category.categories = [];  // 客户端缓存的分类列表
 | 创建 | `/api/categories?name=...&search=...` | PUT |
 | 更新 | `/api/categories/{id}?name=...` | PUT |
 | 删除 | `/api/categories/{id}` | DELETE |
-| 添加存档 | `/api/categories/{catId}/{arcId}` | PUT |
-| 移除存档 | `/api/categories/{catId}/{arcId}` | DELETE |
+| 添加档案 | `/api/categories/{catId}/{arcId}` | PUT |
+| 移除档案 | `/api/categories/{catId}/{arcId}` | DELETE |
 
 ### edit.js - 元数据编辑
 
 **标签输入：**
 - 使用 `tagger` 库进行富文本标签编辑
-- 支持自动完成（基于 `/api/database/stats`）
-- 粘贴自动分割逗号分隔的标签
+- 支持自动补全（基于 `/api/database/stats`）
+- 粘贴时自动拆分逗号分隔的标签
 
 **插件集成：**
 ```javascript
 Edit.runPlugin = function () {
     Edit.saveMetadata().then(() => Edit.getTags());
 };
-// 先保存当前元数据，然后运行插件获取新标签
+// Save current metadata first, then run plugin to get new tags
 ```
+
+**API 交互：**
+| 操作 | 端点 | 方法 |
+|------|------|------|
+| 保存元数据 | `/api/archives/{id}/metadata` | PUT |
+| 运行插件 | `/api/plugins/use?plugin=...&id=...` | POST |
+| 删除档案 | `/api/archives/{id}` | DELETE |
 
 ### upload.js - 上传功能
 
@@ -389,15 +396,15 @@ Edit.runPlugin = function () {
 **URL 下载：**
 ```javascript
 Upload.downloadUrl = function () {
-    // 每行一个 URL，并行提交到 /api/download_url
+    // One URL per line, submit in parallel to /api/download_url
     $("#urlForm").val().split(/\r|\n/).forEach((url) => { ... });
 };
 ```
 
-**进度追踪：**
-- `processingArchives`: 处理中
-- `completedArchives`: 已完成
-- `failedArchives`: 失败
+**进度跟踪：**
+- `processingArchives`：处理中
+- `completedArchives`：已完成
+- `failedArchives`：失败
 - 使用 `Server.checkJobStatus()` 轮询 Minion 任务状态
 
 ---
@@ -409,7 +416,7 @@ Upload.downloadUrl = function () {
 | jQuery | 3.x | DOM 操作 |
 | DataTables | 1.x | 表格组件 |
 | Swiper | 8.x | 轮播 |
-| Awesomplete | 1.x | 自动完成 |
+| Awesomplete | 1.x | 自动补全 |
 | SweetAlert2 | 11.x | 弹窗组件 |
 | react-toastify | 9.x | Toast 通知 |
 | fscreen | 1.x | 全屏 API |

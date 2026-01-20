@@ -4,19 +4,19 @@
 
 ---
 
-## 📊 路由架构概述
+## 📊 路由架构概览
 
 ### 中间件链
 
 ```mermaid
 graph LR
-    A[请求] --> B{CORS?}
-    B -->|是| C[setup_cors]
-    B -->|否| D{No-Fun 模式?}
+    A[Request] --> B{CORS?}
+    B -->|Yes| C[setup_cors]
+    B -->|No| D{No-Fun Mode?}
     C --> D
-    D -->|是| E[logged_in]
-    D -->|否| F[公开路由]
-    E --> G[处理器]
+    D -->|Yes| E[logged_in]
+    D -->|No| F[Public Route]
+    E --> G[Handler]
     F --> G
 ```
 
@@ -33,52 +33,52 @@ graph LR
 
 ## 🔗 完整 API 端点列表
 
-### Archive API (`/api/archives`)
+### 档案 API (`/api/archives`)
 
 | 方法 | 路径 | 认证 | 处理器 | 描述 |
 |------|------|------|--------|------|
-| GET | `/api/archives` | ❌ | `serve_archivelist` | 获取所有存档列表 |
-| GET | `/api/archives/untagged` | ❌ | `serve_untagged_archivelist` | 获取未打标签的存档 |
+| GET | `/api/archives` | ❌ | `serve_archivelist` | 获取所有档案列表 |
+| GET | `/api/archives/untagged` | ❌ | `serve_untagged_archivelist` | 获取未标记档案 |
 | GET | `/api/archives/:id` | ❌ | `serve_metadata` | [已弃用] 获取元数据 |
-| GET | `/api/archives/:id/metadata` | ❌ | `serve_metadata` | 获取存档元数据 |
+| GET | `/api/archives/:id/metadata` | ❌ | `serve_metadata` | 获取档案元数据 |
 | GET | `/api/archives/:id/thumbnail` | ❌ | `serve_thumbnail` | 获取缩略图 |
 | GET | `/api/archives/:id/download` | ❌ | `serve_file` | 下载原始文件 |
 | GET | `/api/archives/:id/page` | ❌ | `serve_page` | 获取指定页面 |
 | GET | `/api/archives/:id/files` | ❌ | `get_file_list` | 获取文件列表 |
 | GET | `/api/archives/:id/categories` | ❌ | `get_categories` | 获取所属分类 |
 | GET | `/api/archives/:id/tankoubons` | ❌ | `get_tankoubons_file` | 获取所属合集 |
-| PUT | `/api/archives/upload` | ✅ | `create_archive` | 上传新存档 |
+| PUT | `/api/archives/upload` | ✅ | `create_archive` | 上传新档案 |
 | PUT | `/api/archives/:id/metadata` | ✅ | `update_metadata` | 更新元数据 |
 | PUT | `/api/archives/:id/thumbnail` | ✅ | `update_thumbnail` | 更新缩略图 |
 | PUT | `/api/archives/:id/progress/:page` | ⚙️ | `update_progress` | 更新阅读进度 |
 | POST | `/api/archives/:id/files/thumbnails` | ❌ | `generate_page_thumbnails` | 生成页面缩略图 |
-| DELETE | `/api/archives/:id` | ✅ | `delete_archive` | 删除存档 |
+| DELETE | `/api/archives/:id` | ✅ | `delete_archive` | 删除档案 |
 | DELETE | `/api/archives/:id/isnew` | ❌ | `clear_new` | 清除新标记 |
 
 > ⚙️ = 可配置 (`enable_authprogress`)
 
 ---
 
-### Search API (`/api/search`)
+### 搜索 API (`/api/search`)
 
 | 方法 | 路径 | 认证 | 处理器 | 描述 |
 |------|------|------|--------|------|
 | GET | `/search` | ❌ | `handle_datatables` | DataTables 格式（内部） |
 | GET | `/api/search` | ❌ | `handle_api` | 公开搜索 API |
-| GET | `/api/search/random` | ❌ | `get_random_archives` | 获取随机存档 |
+| GET | `/api/search/random` | ❌ | `get_random_archives` | 获取随机档案 |
 | DELETE | `/api/search/cache` | ✅ | `clear_cache` | 清除搜索缓存 |
 
 #### 搜索 API 参数
 
 | 参数 | 类型 | 默认值 | 描述 |
 |------|------|--------|------|
-| `filter` | string | - | 搜索关键词（见下方语法） |
+| `filter` | string | - | 搜索关键词（语法见下文） |
 | `category` | string | "" | 分类 ID |
-| `start` | int | 0 | 分页偏移。**使用 `-1` 获取完整未分页结果**（自 0.8.2） |
-| `sortby` | string | "title" | 排序字段：`title` 或 `lastread`（如果启用服务器端进度） |
+| `start` | int | 0 | 分页偏移。**使用 `-1` 获取完整未分页结果**（自 0.8.2 起） |
+| `sortby` | string | "title" | 排序字段：`title` 或 `lastread`（需启用服务端进度） |
 | `order` | string | "asc" | 排序方向 (asc/desc) |
-| `newonly` | bool | false | 仅新存档 |
-| `untaggedonly` | bool | false | 仅未打标签 |
+| `newonly` | bool | false | 仅新档案 |
+| `untaggedonly` | bool | false | 仅未标记 |
 | `groupby_tanks` | bool | false | 按合集分组 |
 
 #### 搜索查询语法
@@ -89,7 +89,7 @@ graph LR
 | `"..."` | 精确字符串搜索 | `"fate grand order"` |
 | `?` 或 `_` | 单字符通配符 | `fate_go` |
 | `*` 或 `%` | 多字符通配符 | `fate*` |
-| `-keyword` | 排除词 | `-yaoi` |
+| `-keyword` | 排除关键词 | `-yaoi` |
 | `$` 后缀 | 精确标签匹配（忽略 misc） | `artist:rco$` |
 | `namespace:value` | 命名空间搜索 | `artist:wada` |
 | `pages:>N` | 页数过滤 | `pages:>=50` |
@@ -100,11 +100,22 @@ graph LR
 | 代码 | 描述 |
 |------|------|
 | `200` | 成功返回结果 |
-| `204` | 搜索引擎未初始化（等待几秒） |
+| `204` | 搜索引擎未初始化（请等待几秒） |
+
+#### 随机搜索参数 (`/api/search/random`)
+
+| 参数 | 类型 | 默认值 | 描述 |
+|------|------|--------|------|
+| `filter` | string | - | 搜索关键词 |
+| `category` | string | "" | 分类 ID |
+| `newonly` | bool | false | 仅新档案 |
+| `untaggedonly` | bool | false | 仅未标记 |
+| `groupby_tanks` | bool | false | 按合集分组 |
+| `count` | int | 5 | 返回的随机档案数量 |
 
 ---
 
-### Category API (`/api/categories`)
+### 分类 API (`/api/categories`)
 
 | 方法 | 路径 | 认证 | 处理器 |
 |------|------|------|--------|
@@ -121,7 +132,7 @@ graph LR
 
 ---
 
-### Tankoubon API (`/api/tankoubons`)
+### 单行本 API (`/api/tankoubons`)
 
 | 方法 | 路径 | 认证 | 处理器 |
 |------|------|------|--------|
@@ -135,7 +146,7 @@ graph LR
 
 ---
 
-### Database API (`/api/database`)
+### 数据库 API (`/api/database`)
 
 | 方法 | 路径 | 认证 | 处理器 |
 |------|------|------|--------|
@@ -186,7 +197,7 @@ graph LR
 
 ## 🔐 认证模式
 
-### 1. 密码保护（Session）
+### 1. 密码保护（会话）
 ```perl
 $public_routes->post('/login')->to('login#check');
 $logged_in = $public_routes->under('/')->to('login#logged_in');
@@ -194,11 +205,11 @@ $logged_in = $public_routes->under('/')->to('login#logged_in');
 
 ### 2. API 密钥
 ```perl
-# 在 login#logged_in_api 中检查
-# 头部格式: "Bearer " + base64(api_key)
+# Checked in login#logged_in_api
+# Header format: "Bearer " + base64(api_key)
 Authorization: Bearer {base64_encoded_api_key}
 
-# 替代方式: 查询参数（未文档化，主要用于 OPDS）
+# Alternative: query parameter (undocumented, mainly for OPDS)
 ?key={api_key}
 ```
 
@@ -250,13 +261,13 @@ if ( $self->LRR_CONF->enable_nofun ) {
 
 ```perl
 exec_with_lock( $self, $redis, "archive-write:$id", "operation", $id, sub {
-    # 临界区代码
+    # Critical section code
 });
 ```
 
 **锁类型：**
 - `upload:{filename}` - 上传锁
-- `archive-write:{id}` - 存档修改锁
+- `archive-write:{id}` - 档案修改锁
 
 ---
 
@@ -269,31 +280,31 @@ sequenceDiagram
     participant Client
     participant Controller as Api/Search
     participant Model as Model/Search
-    participant Cache as Redis 缓存
-    participant Index as Redis 索引
+    participant Cache as Redis Cache
+    participant Index as Redis Index
     
     Client->>Controller: GET /api/search?filter=...
     Controller->>Model: do_search(params)
     Model->>Cache: check_cache(cachekey)
-    alt 缓存命中
-        Cache-->>Model: 冻结数据
+    alt Cache Hit
+        Cache-->>Model: frozen data
         Model->>Model: thaw(data)
-    else 缓存未命中
+    else Cache Miss
         Model->>Index: search_uncached()
         Model->>Cache: nfreeze + hset
     end
     Model-->>Controller: (total, filtered, ids[])
     Controller->>Controller: get_archive_json_multi(ids)
-    Controller-->>Client: JSON 响应
+    Controller-->>Client: JSON response
 ```
 
 ### 缓存机制
 
 ```perl
-# 缓存键格式
+# Cache Key Format
 $cachekey = "$category_id-$filter-$sortkey-$sortorder-$newonly-$untaggedonly-$grouptanks"
 
-# 序列化: Storable (nfreeze/thaw)
+# Serialization: Storable (nfreeze/thaw)
 $redis->hset( "LRR_SEARCHCACHE", $cachekey, nfreeze \@filtered );
 ```
 
@@ -301,14 +312,14 @@ $redis->hset( "LRR_SEARCHCACHE", $cachekey, nfreeze \@filtered );
 - 调用 `invalidate_cache()` 删除 `LRR_SEARCHCACHE`
 - `lastread` 排序不使用缓存
 
-### 索引使用
+### 索引利用
 
 | 排序/过滤 | 使用的索引 |
 |-----------|-----------|
 | 标题搜索 | `LRR_TITLES` (Sorted Set ZSCAN) |
 | 标签搜索 | `INDEX_{tag}` (Set SMEMBERS) |
-| 新存档 | `LRR_NEW` (Set) |
-| 未打标签 | `LRR_UNTAGGED` (Set) |
+| 新档案 | `LRR_NEW` (Set) |
+| 未标记 | `LRR_UNTAGGED` (Set) |
 | 合集分组 | `LRR_TANKGROUPED` (Set) |
 
 ---
@@ -317,8 +328,8 @@ $redis->hset( "LRR_SEARCHCACHE", $cachekey, nfreeze \@filtered );
 
 | 发现 | 详情 |
 |------|------|
-| **总端点数** | 60+ (API + 页面) |
-| **认证模式** | Session + API Key + No-Fun |
-| **响应格式** | JSON，带 operation/success |
+| **端点总数** | 60+ (API + 页面) |
+| **认证模式** | 会话 + API 密钥 + No-Fun |
+| **响应格式** | JSON (含 operation/success) |
 | **并发控制** | Redis 分布式锁 |
 | **特殊功能** | OPDS, WebSocket (批量) |

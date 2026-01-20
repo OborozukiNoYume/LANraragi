@@ -1,12 +1,12 @@
-# 测试和构建系统
+# 测试与构建系统
 
-> 分析日期: 2026-01-11
+> 分析日期：2026-01-11
 
 本文档分析 LANraragi 的测试架构和构建/部署系统。
 
 ---
 
-## 📊 测试架构概述
+## 📊 测试架构概览
 
 ### 测试目录结构
 ```
@@ -25,7 +25,7 @@ tests/
 │   │   ├── Chaika.t
 │   │   ├── EHentai.t
 │   │   └── ...
-│   └── Utils/                  # 工具类测试 (8)
+│   └── Utils/                  # 工具测试 (8)
 │       ├── Archive.t
 │       ├── Tags.t
 │       └── ...
@@ -90,7 +90,7 @@ sub get_logger_mock {
 |----|------|------|
 | `perl` | 5.36.0 | 语言版本 |
 | `Redis` | 1.995 | Redis 客户端 |
-| `Archive::Libarchive::*` | 0.03+ | 压缩包处理 |
+| `Archive::Libarchive::*` | 0.03+ | 归档处理 |
 | `Mojolicious` | 9.39 | Web 框架 |
 
 ### 任务队列
@@ -152,9 +152,9 @@ VOLUME [ "/home/koyomi/lanraragi/lib/LANraragi/Plugin/Sideloaded" ]
 
 ### 构建优化
 
-1. **层复制** - cpanfile 在源代码之前用于 Docker 缓存
+1. **层复制** - 在源代码之前复制 cpanfile 以利用 Docker 缓存
 2. **s6-overlay** - 进程管理，支持 Redis + LRR 双进程
-3. **健康检查** - 每分钟检查端口 3000
+3. **健康检查** - 每分钟检查 3000 端口
 
 ---
 
@@ -176,7 +176,7 @@ VOLUME [ "/home/koyomi/lanraragi/lib/LANraragi/Plugin/Sideloaded" ]
 |----|------|
 | `redis_address` | Redis 服务器地址 |
 | `redis_password` | Redis 认证密码 |
-| `redis_database` | 存档数据 (DB 0) |
+| `redis_database` | 档案数据 (DB 0) |
 | `redis_database_minion` | Minion 任务 (DB 1) |
 | `redis_database_config` | 配置存储 (DB 2) |
 | `redis_database_search` | 搜索索引 (DB 3) |
@@ -190,8 +190,8 @@ VOLUME [ "/home/koyomi/lanraragi/lib/LANraragi/Plugin/Sideloaded" ]
 |--------|------|
 | `push-continuous-integration.yml` | 推送时运行测试 |
 | `push-continous-delivery.yml` | 构建 nightly Docker 镜像 |
-| `release-delivery.yml` | 构建发布版 Docker 镜像和 Windows zip |
-| `push-brewtest.yml` | 测试 Homebrew 配方 |
+| `release-delivery.yml` | 构建发布版 Docker 镜像 & Windows zip |
+| `push-brewtest.yml` | 测试 Homebrew formula |
 
 ---
 
@@ -208,11 +208,11 @@ VOLUME [ "/home/koyomi/lanraragi/lib/LANraragi/Plugin/Sideloaded" ]
 
 ### 构建系统
 
-| 平台 | 方法 |
+| 平台 | 方式 |
 |------|------|
 | Docker | 基于 Alpine，s6-overlay |
-| macOS | Homebrew 配方 |
-| Windows | PowerShell 安装程序 |
+| macOS | Homebrew formula |
+| Windows | PowerShell 安装器 |
 | 源码 | 手动 Perl 依赖安装 |
 
 ### 关键文件
@@ -221,6 +221,6 @@ VOLUME [ "/home/koyomi/lanraragi/lib/LANraragi/Plugin/Sideloaded" ]
 |------|------|
 | `tools/cpanfile` | Perl 依赖 |
 | `tools/build/docker/Dockerfile` | Docker 构建 |
-| `tools/build/homebrew/Lanraragi.rb` | Homebrew 配方 |
-| `tools/build/windows/build-installer.ps1` | Windows 安装程序 |
+| `tools/build/homebrew/Lanraragi.rb` | Homebrew formula |
+| `tools/build/windows/build-installer.ps1` | Windows 安装器 |
 | `lrr.conf` | 运行时配置 |
