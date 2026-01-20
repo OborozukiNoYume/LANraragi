@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-05-04 20:25+0200\n"
-"PO-Revision-Date: 2025-12-20 13:00+0000\n"
+"PO-Revision-Date: 2026-01-15 22:01+0000\n"
 "Last-Translator: gustaavv <gustaavv.git@yahoo.com>\n"
 "Language-Team: Chinese (Simplified Han script) <https://hosted.weblate.org/"
 "projects/lanraragi/lanraragi-source/zh_Hans/>\n"
@@ -12,7 +12,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 5.15.1\n"
+"X-Generator: Weblate 5.15.2\n"
 
 # Sample Data
 # ------Start of Backup.html.tt2------
@@ -1727,3 +1727,12 @@ msgstr "清除评分"
 
 msgid " -- Select Rating -- "
 msgstr " -- 选择评分 -- "
+
+msgid "Language"
+msgstr "语言"
+
+msgid "Automatic (browser default)"
+msgstr "自动（使用浏览器默认设置）"
+
+msgid "Select the language for the user interface. Set to Automatic to use your browser's language preference."
+msgstr "选择用户界面的语言。设置为自动将使用浏览器的语言偏好设置。"

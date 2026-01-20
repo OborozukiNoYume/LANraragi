@@ -3,8 +3,8 @@ msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-05-06 17:24+0200\n"
-"PO-Revision-Date: 2025-11-24 04:51+0000\n"
-"Last-Translator: Haytsir <alswo7310@naver.com>\n"
+"PO-Revision-Date: 2026-01-15 22:01+0000\n"
+"Last-Translator: Yurical <yurical1@outlook.com>\n"
 "Language-Team: Korean <https://hosted.weblate.org/projects/lanraragi/"
 "lanraragi-source/ko/>\n"
 "Language: ko\n"
@@ -12,7 +12,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 5.15-dev\n"
+"X-Generator: Weblate 5.15.2\n"
 
 # Sample Data
 # ------Start of Backup.html.tt2------
@@ -78,7 +78,7 @@ msgid "Delete Archive"
 msgstr ""
 
 msgid "Read Archive"
-msgstr ""
+msgstr "아카이브 읽기"
 
 msgid "Use plugin :"
 msgstr "사용 플러그인 :"
@@ -250,7 +250,7 @@ msgid "Archive Files"
 msgstr "아카이브 파일"
 
 msgid "Tags and Thumbnails"
-msgstr "태그 및 썸네일"
+msgstr "태그 및 섬네일"
 
 msgid "Background Workers"
 msgstr "백그라운드 워커"
@@ -258,13 +258,14 @@ msgstr "백그라운드 워커"
 # ------End of Config.html.tt2------
 # ------Start of Config_Files.html.tt2------
 msgid "Archive Directory"
-msgstr "아카이브 디렉토리"
+msgstr "아카이브 디렉터리"
 
 msgid "Directory where the archives will be located. It will be created if it doesn't exist."
-msgstr "아카이브가 위치할 디렉토리입니다. 해당 디렉토리가 없으면 생성됩니다."
+msgstr "아카이브가 위치할 디렉터리입니다. 해당 디렉터리가 없으면 생성됩니다."
 
 msgid "Make sure the OS user running LANraragi has read access to this directory."
-msgstr "LANraragi를 실행하는 운영 체제 사용자가 이 디렉토리에 대한 읽기 권한을 "
+msgstr ""
+"LANraragi를 실행하는 운영 체제 사용자가 이 디렉터리에 대한 읽기 권한을 "
 "가져야 합니다."
 
 msgid "Synology eCryptFS Compatibility Mode"
@@ -475,8 +476,9 @@ msgid "Kaput!"
 msgstr "종료됨!"
 
 msgid "This File Watcher is responsible for monitoring your content directory and automatically handling new archives as they come."
-msgstr "이 파일 감시자는 콘텐츠 디렉토리를 모니터링하고 새로운 아카이브가 도착할 때 "
-"자동으로 처리합니다."
+msgstr ""
+"이 파일 감시자는 콘텐츠 디렉터리를 모니터링하고 새로운 아카이브를 발견했을 "
+"때 자동으로 처리합니다."
 
 msgid "Restart File Watcher"
 msgstr "파일 감시자 재시작"
@@ -497,45 +499,47 @@ msgstr "콘솔은 현재 실행 중인 작업과 완료된 작업을 표시합�
 # ------End of Config_Shinobu.html.tt2------
 # ------Start of Config_Tags.html.tt2------
 msgid "Thumbnail Directory"
-msgstr "썸네일 디렉토리"
+msgstr "섬네일 디렉터리"
 
 msgid "Directory where the archive thumbnails will be located. It will be created if it doesn't exist."
-msgstr "아카이브 썸네일이 위치할 디렉토리입니다. 해당 디렉토리가 없으면 생성됩니다."
+msgstr "아카이브 섬네일이 위치할 디렉터리입니다. 해당 디렉터리가 없으면 생성됩니다."
 
 msgid "Make sure the OS user running LANraragi has read/write access to this directory."
-msgstr "LANraragi를 실행하는 운영 체제 사용자가 이 디렉토리에 대한 읽기/쓰기 권한을 "
+msgstr ""
+"LANraragi를 실행하는 운영 체제 사용자가 이 디렉터리에 대한 읽기/쓰기 권한을 "
 "가져야 합니다."
 
 msgid "Use high-quality thumbnails for pages"
-msgstr "페이지에 대해 고품질 썸네일 사용"
+msgstr "페이지에 대해 고품질 섬네일 사용"
 
 msgid "LANraragi generates lower-quality thumbnails for archive pages for performance reasons."
-msgstr "LANraragi는 성능 이유로 아카이브 페이지에 대해 낮은 품질의 썸네일을 "
+msgstr ""
+"LANraragi는 성능 이유로 아카이브 페이지에 대해 낮은 품질의 섬네일을 "
 "생성합니다."
 
 msgid "If this option is checked, it will instead generate page thumbnails at the same quality as cover thumbnails."
-msgstr "이 옵션을 확인하면 커버 썸네일과 동일한 품질로 페이지 썸네일을 생성합니다."
+msgstr "이 옵션을 켜면 커버 섬네일과 동일한 품질로 페이지 섬네일을 생성합니다."
 
 msgid "Use JPEG XL for thumbnails"
-msgstr "썸네일에 JPEG XL 사용"
+msgstr "섬네일에 JPEG XL 사용"
 
 msgid "LANraragi generates JPEG thumbnails for compatibility and performance reasons."
-msgstr "LANraragi는 호환성과 성능 이유로 JPEG 썸네일을 생성합니다."
+msgstr "LANraragi는 호환성과 성능 이유로 JPEG 섬네일을 생성합니다."
 
 msgid "If this option is checked, it will instead generate thumbnails using JPEG XL."
-msgstr "이 옵션을 확인하면 JPEG XL을 사용하여 썸네일을 생성합니다."
+msgstr "이 옵션을 켜면 JPEG XL을 사용하여 썸네일을 생성합니다."
 
 msgid "Generate Missing Thumbnails"
-msgstr "누락된 썸네일 생성"
+msgstr "누락된 섬네일 생성"
 
 msgid "Generate Thumbnails for all archives that don't have one yet."
-msgstr "아직 썸네일이 없는 모든 아카이브에 대한 썸네일을 생성합니다."
+msgstr "아직 섬네일이 없는 모든 아카이브에 대한 섬네일을 생성합니다."
 
 msgid "Regenerate all Thumbnails"
-msgstr "모든 썸네일 재생성"
+msgstr "모든 섬네일 재생성"
 
 msgid "Regenerate all thumbnails. This might take a while!"
-msgstr "모든 썸네일을 재생성합니다. 이 작업은 시간이 조금 걸릴 수 있습니다!"
+msgstr "모든 섬네일을 재생성합니다. 이 작업은 시간이 조금 걸릴 수 있습니다!"
 
 msgid "Add Timestamp Tag"
 msgstr "타임스탬프 태그 추가"
@@ -622,7 +626,7 @@ msgid "(separated by hyphens, i.e : tag1, tag2)"
 msgstr "(하이픈으로 구분, 예: tag1, tag2)"
 
 msgid "Import Tags from Plugin :"
-msgstr "플러그인으로 가져온 태그:"
+msgstr "플러그인에서 태그 가져오기:"
 
 msgid "Help"
 msgstr ""
@@ -699,7 +703,7 @@ msgid "Sort Order"
 msgstr "정렬 순서"
 
 msgid "Crop thumbnails"
-msgstr "썸네일 자르기"
+msgstr "섬네일 자르기"
 
 msgid "Go to Page:"
 msgstr "페이지로 이동:"
@@ -711,7 +715,7 @@ msgid "Switch to Compact Mode"
 msgstr "컴팩트 모드로 전환"
 
 msgid "Switch to Thumbnail Mode"
-msgstr "썸네일 모드로 전환"
+msgstr "섬네일 모드로 전환"
 
 msgid "Title"
 msgstr ""
@@ -921,10 +925,10 @@ msgid "Admin Options"
 msgstr "관리자 옵션"
 
 msgid "Set this Page as Thumbnail"
-msgstr "이 페이지를 썸네일로 설정"
+msgstr "이 페이지를 섬네일로 설정"
 
 msgid "Set the currently opened page as the thumbnail for this archive."
-msgstr "현재 열린 페이지를 이 아카이브의 썸네일로 설정합니다."
+msgstr "현재 열린 페이지를 이 아카이브의 섬네일로 설정합니다."
 
 msgid "Clean Archive Cache"
 msgstr "아카이브 캐시 정리"
@@ -981,7 +985,7 @@ msgid "P: toggle double page mode"
 msgstr "P: 이중 페이지 모드 전환"
 
 msgid "Q: bring up the thumbnail index and archive options."
-msgstr "Q: 썸네일 인덱스 및 아카이브 옵션 표시."
+msgstr "Q: 섬네일 인덱스 및 아카이브 옵션 표시"
 
 msgid "R: open a random archive."
 msgstr "\"R: 랜덤 아카이브 열기."
@@ -1060,7 +1064,7 @@ msgid "Show Archive Overlay by default"
 msgstr "기본적으로 아카이브 오버레이 표시"
 
 msgid "This will show the overlay with thumbnails every time you open a new Reader page."
-msgstr "이 옵션은 새로운 리더 페이지를 열 때마다 썸네일 오버레이를 표시합니다."
+msgstr "새로운 리더 페이지를 열 때마다 섬네일 오버레이를 표시합니다."
 
 msgid "Enabled"
 msgstr "활성화"
@@ -1184,12 +1188,12 @@ msgstr "라이브러리로 돌아가기"
 
 # ------End of Upload.html.tt2------
 msgid "Rescan Archive Directory"
-msgstr "아카이브 디렉토리 재검색"
+msgstr "아카이브 디렉터리 재검색"
 
 msgid "Click this button to trigger a rescan of the Archive Directory in case you're missing files, or some data such as total page counts."
 msgstr ""
-"이 버튼을 클릭하여 아카이브 디렉토리를 재검색하여 파일이 누락되었거나, <br> "
-"총 페이지 수와 같은 데이터가 누락되었을 경우를 처리합니다. <br>"
+"이 버튼을 클릭하면 아카이브 디렉터리를 재검색하여 파일 누락이나 <br> 총 "
+"페이지 수 등의 데이터 누락을 해결할 수 있습니다. <br>"
 
 # ------Stary of i18n.html.tt2------
 msgid "Backup restored!"
@@ -1498,10 +1502,10 @@ msgid "Error uploading plugin"
 msgstr "플러그인 업로드 중 오류가 발생했습니다"
 
 msgid "Successfully set page \${page} as the thumbnail!"
-msgstr "페이지 ${page}가 썸네일로 설정되었습니다!"
+msgstr "페이지 ${page}가 섬네일로 설정되었습니다!"
 
 msgid "Error updating thumbnail"
-msgstr "썸네일 업데이트 중 오류가 발생했습니다"
+msgstr "섬네일 업데이트 중 오류가 발생했습니다"
 
 msgid "Error clearing new flag"
 msgstr "신규 플래그 초기화 중 오류가 발생했습니다"
@@ -1538,7 +1542,8 @@ msgid "Page \${page}"
 msgstr "페이지 ${page}"
 
 msgid "The page thumbnailing job didn't conclude properly. Your archive might be corrupted."
-msgstr "페이지 썸네일 작업이 제대로 완료되지 않았습니다. 아카이브가 손상되었을 수 "
+msgstr ""
+"페이지 섬네일 작업이 제대로 완료되지 않았습니다. 아카이브가 손상되었을 수 "
 "있습니다."
 
 msgid "A script is already running."
@@ -1594,11 +1599,12 @@ msgid "Do a backup now if some files disappeared from your archive index."
 msgstr "일부 파일이 아카이브 인덱스에서 사라졌다면 지금 백업하세요."
 
 msgid "Queued up a job to regenerate thumbnails! Stay tuned for updates or check the Minion console."
-msgstr "썸네일 재생성 작업이 예약되었습니다! 업데이트를 기다리거나 Minion 콘솔을 "
+msgstr ""
+"섬네일 재생성 작업이 예약되었습니다! 업데이트를 기다리거나 Minion 콘솔을 "
 "확인하세요."
 
 msgid "All thumbnails generated! Errors will be listed below if there were any."
-msgstr "모든 썸네일이 생성되었습니다! 오류가 있었다면 아래에 나열됩니다."
+msgstr "모든 섬네일이 생성되었습니다! 오류가 있었다면 아래에 나열됩니다."
 
 msgid "Added \${id} to category \${cat}!"
 msgstr "${id}를 ${cat} 카테고리에 추가했습니다!"
@@ -1759,3 +1765,26 @@ msgstr "클라이언트 측 열람 기록 트래킹과 결합하여 인증되지
 
 msgid "Authenticated Progress Tracking"
 msgstr "인증된 사용자 진행도 트래킹"
+
+msgid "Language"
+msgstr "언어"
+
+msgid "Automatic (browser default)"
+msgstr "자동 (브라우저 기본값)"
+
+msgid "Select the language for the user interface. Set to Automatic to use your browser's language preference."
+msgstr ""
+"사용자 인터페이스의 언어를 선택합니다. 자동으로 설정하면 브라우저의 언어 "
+"설정을 따릅니다."
+
+msgid "Rating"
+msgstr "평점"
+
+msgid "Set Rating"
+msgstr "평점 설정"
+
+msgid "Clear Rating"
+msgstr "평점 삭제"
+
+msgid " -- Select Rating -- "
+msgstr " -- 평점 선택 -- "
