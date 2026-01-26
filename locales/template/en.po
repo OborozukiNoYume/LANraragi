@@ -1559,6 +1559,36 @@ msgstr "Starting auto next page failed!"
 msgid "Please set the auto next page interval to a positive number."
 msgstr "Please set the auto next page interval to a positive number."
 
+msgid "Chapters"
+msgstr "Chapters"
+
+msgid "Pages"
+msgstr "Pages"
+
+msgid "Add Chapter at this Page"
+msgstr "Add Chapter at this Page"
+
+msgid "Edit Chapter name"
+msgstr "Edit Chapter name"
+
+msgid "Delete Chapter"
+msgstr "Delete Chapter"
+
+msgid "Are you sure you want to delete this chapter/section?"
+msgstr "Are you sure you want to delete this chapter/section?"
+
+msgid "Enter a title for this chapter/section:"
+msgstr "Enter a title for this chapter/section:"
+
+msgid "Chapter added!"
+msgstr "Chapter added!"
+
+msgid "Error adding/removing chapter:"
+msgstr "Error adding/removing chapter:"
+
+msgid "Untitled Chapter"
+msgstr "Untitled Chapter"
+
 msgid "A script is already running."
 msgstr "A script is already running."
 

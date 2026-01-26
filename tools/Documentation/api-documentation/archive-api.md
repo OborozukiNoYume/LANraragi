@@ -36,6 +36,14 @@ description: Everything dealing with Archives.
 [OpenAPI lanraragi-api](https://raw.githubusercontent.com/Difegue/LANraragi/refs/heads/dev/tools/openapi.yaml)
 {% endopenapi-operation %}
 
+{% openapi-operation spec="lanraragi-api" path="/archives/{id}/toc" method="put" %}
+[OpenAPI lanraragi-api](https://raw.githubusercontent.com/Difegue/LANraragi/refs/heads/dev/tools/openapi.yaml)
+{% endopenapi-operation %}
+
+{% openapi-operation spec="lanraragi-api" path="/archives/{id}/toc" method="delete" %}
+[OpenAPI lanraragi-api](https://raw.githubusercontent.com/Difegue/LANraragi/refs/heads/dev/tools/openapi.yaml)
+{% endopenapi-operation %}
+
 {% openapi-operation spec="lanraragi-api" path="/archives/{id}/categories" method="get" %}
 [OpenAPI lanraragi-api](https://raw.githubusercontent.com/Difegue/LANraragi/refs/heads/dev/tools/openapi.yaml)
 {% endopenapi-operation %}
@@ -61,6 +69,10 @@ description: Everything dealing with Archives.
 {% endopenapi-operation %}
 
 {% openapi-operation spec="lanraragi-api" path="/archives/{id}/progress/{page}" method="put" %}
+[OpenAPI lanraragi-api](https://raw.githubusercontent.com/Difegue/LANraragi/refs/heads/dev/tools/openapi.yaml)
+{% endopenapi-operation %}
+
+{% openapi-operation spec="lanraragi-api" path="/archives/{id}/isnew" method="put" %}
 [OpenAPI lanraragi-api](https://raw.githubusercontent.com/Difegue/LANraragi/refs/heads/dev/tools/openapi.yaml)
 {% endopenapi-operation %}
 

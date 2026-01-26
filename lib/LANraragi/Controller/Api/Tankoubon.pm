@@ -65,10 +65,8 @@ sub delete_tankoubon {
     my $self   = shift;
     my $tankid = $self->stash('id');
 
-    my $redis = LANraragi::Model::Config->get_redis;
-
     return unless exec_with_lock(
-        $self, $redis,
+        $self,
         "tankoubon-write:$tankid",
         "delete_tankoubon",
         $tankid,
@@ -90,10 +88,8 @@ sub update_tankoubon {
     my $tankid = $self->stash('id');
     my $data   = $self->req->json;
 
-    my $redis = LANraragi::Model::Config->get_redis;
-
     return unless exec_with_lock(
-        $self, $redis,
+        $self,
         "tankoubon-write:$tankid",
         "update_tankoubon",
         $tankid,
@@ -118,10 +114,8 @@ sub add_to_tankoubon {
     my $tankid = $self->stash('id');
     my $arcid  = $self->stash('archive');
 
-    my $redis = LANraragi::Model::Config->get_redis;
-
     return unless exec_with_lock(
-        $self, $redis,
+        $self,
         "tankoubon-write:$tankid",
         "add_to_tankoubon",
         $tankid,
@@ -151,10 +145,8 @@ sub remove_from_tankoubon {
     my $tankid = $self->stash('id');
     my $arcid  = $self->stash('archive');
 
-    my $redis = LANraragi::Model::Config->get_redis;
-
     return unless exec_with_lock(
-        $self, $redis,
+        $self,
         "tankoubon-write:$tankid",
         "remove_from_tankoubon",
         $tankid,

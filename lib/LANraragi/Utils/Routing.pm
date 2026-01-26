@@ -135,14 +135,17 @@ sub apply_routes {
         $public_api->put('/api/archives/:id/progress/:page')->to('api-archive#update_progress');
     }
 
-    $public_api->delete('/api/archives/:id/isnew')->to('api-archive#clear_new');
     $public_api->get('/api/archives/:id')->to('api-archive#serve_metadata');    # Deprecated, remove eventually
     $public_api->get('/api/archives/:id/metadata')->to('api-archive#serve_metadata');
     $public_api->get('/api/archives/:id/categories')->to('api-archive#get_categories');
     $public_api->get('/api/archives/:id/tankoubons')->to('api-tankoubon#get_tankoubons_file');
+    $public_api->delete('/api/archives/:id/isnew')->to('api-archive#clear_new');
+    $logged_in_api->put('/api/archives/:id/isnew')->to('api-archive#add_new');
     $logged_in_api->put('/api/archives/upload')->to('api-archive#create_archive');
     $logged_in_api->put('/api/archives/:id/thumbnail')->to('api-archive#update_thumbnail');
     $logged_in_api->put('/api/archives/:id/metadata')->to('api-archive#update_metadata');
+    $logged_in_api->put('/api/archives/:id/toc')->to('api-archive#add_toc');
+    $logged_in_api->delete('/api/archives/:id/toc')->to('api-archive#remove_toc');
     $logged_in_api->delete('/api/archives/:id')->to('api-archive#delete_archive');
 
     # Search API
@@ -173,10 +176,10 @@ sub apply_routes {
     $public_api->get('/api/categories')->to('api-category#get_category_list');
     $public_api->get('/api/categories/bookmark_link')->to('api-category#get_bookmark_link');
     $public_api->get('/api/categories/:id')->to('api-category#get_category');
-    $logged_in_api->put('/api/categories/bookmark_link/:id')->to('api-category#update_bookmark_link');
     $logged_in_api->put('/api/categories')->to('api-category#create_category');
-    $logged_in_api->put('/api/categories/:id')->to('api-category#update_category');
+    $logged_in_api->put('/api/categories/bookmark_link/:id')->to('api-category#update_bookmark_link');
     $logged_in_api->delete('/api/categories/bookmark_link')->to('api-category#remove_bookmark_link');
+    $logged_in_api->put('/api/categories/:id')->to('api-category#update_category');
     $logged_in_api->delete('/api/categories/:id')->to('api-category#delete_category');
     $logged_in_api->put('/api/categories/:id/:archive')->to('api-category#add_to_category');
     $logged_in_api->delete('/api/categories/:id/:archive')->to('api-category#remove_from_category');

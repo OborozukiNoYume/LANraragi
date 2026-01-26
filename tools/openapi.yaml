@@ -1313,6 +1313,110 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OperationResponse' 
+  /archives/{id}/toc:
+    put: 
+      security:
+        - api_key: []
+      operationId: addArchiveToc
+      x-mojo-to: api-archive#add_toc
+      summary: 🔑 Add entry to Archive Table of Contents
+      description: >-
+        Add an entry to the Table of Contents of a given Archive.  
+        The ToC is stored as a JSON-encoded key-value array mapping a page to a title for the chapter/section starting at that page.  
+      tags:
+        - archives
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the Archive to process.
+          schema:
+            type: string
+            minLength: 40
+            maxLength: 40
+        - name: page
+          in: query
+          required: true
+          description: Page number where the chapter/section starts.
+          schema:
+            type: integer
+        - name: title
+          in: query
+          required: true
+          description: Title of the chapter/section.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Archive TOC updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationResponse'
+              example:
+                operation: update_toc
+                success: 1
+                successMessage: Added ToC entry for page 143.
+        '400':
+          description: No archive ID response or other error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationResponse'
+        '423':
+          description: Locked resource response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationResponse'
+    delete:
+      security:
+        - api_key: []
+      operationId: deleteArchiveToc
+      x-mojo-to: api-archive#remove_toc
+      summary: 🔑 Remove entry from Archive Table of Contents
+      description: >-
+        Delete an entry from the Table of Contents of a given Archive.  
+      tags:
+        - archives
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the Archive to process.
+          schema:
+            type: string
+            minLength: 40
+            maxLength: 40
+        - name: page
+          in: query
+          required: true
+          description: Page number of the chapter/section to delete.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Archive TOC updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationResponse'
+              example:
+                operation: remove_toc
+                success: 1
+                successMessage: Removed ToC entry for page 143.
+        '400':
+          description: No archive ID response or other error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationResponse'
+        '423':
+          description: Locked resource response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationResponse'
   /archives/{id}/download:
     get:
       operationId: downloadArchive
@@ -1623,6 +1727,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/OperationResponse'
   /archives/{id}/isnew:
+    put:
+      security:
+        - api_key: []
+      operationId: setNewArchiveFlag
+      x-mojo-to: api-archive#add_new
+      summary: 🔑 Set Archive New flag
+      description: Sets/Restores the "New!" flag on an archive.
+      tags:
+        - archives
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the Archive to process.
+          schema:
+            type: string
+            minLength: 40
+            maxLength: 40
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationResponse'
+        '400':
+          description: No archive ID response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationResponse'
+        '423':
+          description: Locked resource response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationResponse'
     delete:
       operationId: clearNewArchiveFlag
       x-mojo-to: api-archive#clear_new
@@ -3407,6 +3548,7 @@ components:
         - pagecount
         - lastreadtime
         - size
+        - toc
       properties:
         arcid:
           type: string
@@ -3443,6 +3585,9 @@ components:
         size:
           type: integer
           description: Size of the archive in bytes
+        toc:
+          type: array
+          description: Table of contents for the archive
       example:
         arcid: 28697b96f0ac5858be2614ed10ca47742c9522fd
         isnew: false
@@ -3454,6 +3599,14 @@ components:
         title: Fate GO MEMO
         filename: Fate GO MEMO
         summary: null
+        size: 1234567
+        toc: 
+          - name: Chapter 1
+            page: 1
+          - name: Chapter 2
+            page: 13
+          - name: Chapter 3
+            page: 25
     CategoryMetadataJson:
       type: object
       description: >-
