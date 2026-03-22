@@ -38,6 +38,8 @@ sub index {
         nofunmode       => $self->LRR_CONF->enable_nofun,
         apikey          => $self->LRR_CONF->get_apikey,
         enablecors      => $self->LRR_CONF->enable_cors,
+        disableopenapi  => $self->LRR_CONF->get_disable_openapi,
+        enablemetrics   => $self->LRR_CONF->enable_metrics,
         enableresize    => $self->LRR_CONF->enable_resize,
         sizethreshold   => $self->LRR_CONF->get_threshold,
         readerquality   => $self->LRR_CONF->get_readquality,
@@ -49,7 +51,8 @@ sub index {
         jxlthumbpages   => $self->LRR_CONF->get_jxlthumbpages,
         csshead         => generate_themes_header($self),
         replacedupe     => $self->LRR_CONF->get_replacedupe,
-        language        => $self->LRR_CONF->get_language
+        language        => $self->LRR_CONF->get_language,
+        excludednamespaces => $self->LRR_CONF->get_excludednamespaces
     );
 }
 
@@ -75,11 +78,14 @@ sub save_config {
         sizethreshold => scalar $self->req->param('sizethreshold'),
         theme         => scalar $self->req->param('theme'),
         language      => scalar $self->req->param('language'),
+        excludednamespaces => scalar $self->req->param('excludednamespaces'),
 
         # For checkboxes,
         # we check if the parameter exists in the POST to return either 1 or 0.
         enablepass      => ( scalar $self->req->param('enablepass')      ? '1' : '0' ),
         enablecors      => ( scalar $self->req->param('enablecors')      ? '1' : '0' ),
+        disableopenapi  => ( scalar $self->req->param('disableopenapi')  ? '1' : '0' ),
+        enablemetrics   => ( scalar $self->req->param('enablemetrics')   ? '1' : '0' ),
         localprogress   => ( scalar $self->req->param('localprogress')   ? '1' : '0' ),
         authprogress    => ( scalar $self->req->param('authprogress')    ? '1' : '0' ),
         devmode         => ( scalar $self->req->param('devmode')         ? '1' : '0' ),
