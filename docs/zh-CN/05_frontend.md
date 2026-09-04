@@ -89,7 +89,7 @@ DOM。它们都遵循相同形态（`import * as Server from "./mod/server.js"; 
 | `duplicates.js` | 重复检测界面。 |
 | `edit.js` | 档案元数据编辑；标签输入使用 `@jcubic/tagger`，标签排序使用 SortableJS，二者均由 `templates/edit.html.tt2` 作为经典全局脚本加载（`tagger.js`、`Sortable.min.js`）。其插件面板经 `POST /api/plugins/use` 同步运行元数据插件，应用返回的标题/摘要并逐个添加返回的标签。 |
 | `logs.js` | 日志查看器：从 `/logs/{type}?lines=N` 抓取五个日志文件的原始文本。 |
-| `plugins.js` | 插件管理与上传：经 `saveFormData` 保存插件设置，并通过 `POST /config/plugins/upload` 旁上传插件包（jQuery-File-Upload）。 |
+| `plugins.js` | 插件管理与上传：经 `saveFormData` 保存插件设置，并以旁加载（sideload）方式经 `POST /config/plugins/upload` 上传插件包（jQuery-File-Upload）。 |
 | `reader.js` | 一行再导出：`export { initializeAll } from "./mod/reader_common.js";` —— 保留它是为了让 `templates/reader.html.tt2` 能加载一个稳定的 URL，而实现放在 `mod/` 中。 |
 | `stats.js` | 统计仪表盘（jqCloud，经 `templates/stats.html.tt2`）。 |
 | `upload.js` | 上传页面（jQuery-File-Upload）：文件提交到 `/upload`（入队 `handle_upload` Minion 任务），URL 行提交到 `POST /api/download_url`；两者都以 `checkJobStatus(..., useDetail = true)` 跟踪。 |
