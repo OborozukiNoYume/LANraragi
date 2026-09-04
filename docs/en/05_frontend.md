@@ -119,8 +119,9 @@ by the template (`trackProgressLocally`, `authenticateProgress`):
 - local tracking → `localStorage.setItem("<id>-reader", page)`;
 - unauthenticated server tracking → same PUT without auth.
 
-Image prefetching is `preloadImages()`: it fetches the next `state.preloadCount.value` pages (doubled in
-double-page mode, plus one previous page) as blobs via `loadImage()` and keeps `URL.createObjectURL()` results in
+Image prefetching is `preloadImages()`: it fetches the next `state.preloadCount.value` pages plus one
+previous page (both counts are doubled in double-page mode; the previous-page preload is skipped when
+`preloadCount` is 0) as blobs via `loadImage()` and keeps `URL.createObjectURL()` results in
 `state.preloadedImg`, recording sizes in KiB (`Content-Length` / 1024) in `state.preloadedSizes` for the
 fileinfo display. Cross-archive
 next/prev navigation (`readNextArchive()`/`readPreviousArchive()`) restores the originating DataTables page from
@@ -131,31 +132,36 @@ next/prev navigation (`readNextArchive()`/`readPreviousArchive()`) restores the 
 The reader never reorders `state.pages`; modes only change how a page index is projected onto the
 DOM. Standard view has two `<img>` slots (`#img`, `#img_doublepage`) inside the flex `#display`
 container — an empty `src` hides the second slot via CSS. In double-page mode (active only when
-`currentPage` is neither the first nor the last page) the two images render side by side under the
-`double-mode` class, and a spread whose either half is landscape ("widespread") collapses to that
+`currentPage` is neither the first nor the last page) the two slots sit side by side via
+`#display`'s always-on flex layout (the toggled `double-mode` class carries no CSS of its own),
+and a spread whose either half is landscape ("widespread") collapses to that
 single image with `showingSinglePage = true`; navigating backwards then steps back one extra page
 to land on the start of the previous spread. Manga mode swaps which half of a spread goes into
 which slot and inverts `changePage()` directions (including first/last); the pages array itself is
 untouched. There is no blank-page filler — pair balancing is purely the widespread fallback plus
 that boundary rule.
 
-Infinite scroll replaces this pipeline entirely: one real `<img id="page-N">` per page is
-appended, an `IntersectionObserver` (threshold 0.5) updates `currentPage` and calls
-`updateProgress()` as a page crosses mid-viewport, manga/double modes are forced off, and archives
+Infinite scroll replaces this pipeline entirely: pages after the first are appended as real
+`<img id="page-N">` elements (the first page reuses the existing `#img` slot and is not covered by
+the observer), an `IntersectionObserver` (threshold 0.5) updates `currentPage` and calls
+`updateProgress()` when a page crosses mid-viewport, manga/double modes are forced off, and archives
 tagged `webtoon` get zero-margin styling. `goToPage()` clamps the index, renders (or scrolls in
-infinite mode), then always runs `preloadImages()`, `applyContainerWidth()`,
-`updateArchiveOverlay()` and `updateProgress()` — which reports `currentPage + 1` (1-indexed), so
+infinite mode), then always runs `updateArchiveOverlay()` and `updateProgress()` — in standard
+view it additionally prefetches and re-applies width styles before scrolling to top.
+`updateProgress()` reports `currentPage + 1` (1-indexed), so
 a two-page spread records only its first page. Chapters resolve through `findChapterForPage()`
 over the `{startPage, endPage, chapters}` tree that `buildArchiveChapters()` in `common.js` builds
 from the archive's `toc` entries (`{page, name}`), with tanks nesting per-archive chapters shifted
 by their page offset. Failure handling is thin by design: page images have no `onerror` handler,
-and a whole-archive load failure shows `flubbed.gif` plus an error heading, while a 423 on a
+a whole-archive load failure surfaces as an error toast (the `flubbed.gif` fallback branch is
+gated on a condition its `[]` initialization makes unreachable), and a 423 on a
 progress PUT is swallowed silently.
 
 The auto-next-page timer is a 1-second `setInterval` countdown (interval default 10 s, editable in
 the options panel); at zero it turns the page — or crosses into the next/previous archive at the
-boundary, resuming via a `sessionStorage autoNextPage` flag and holding a wake lock — and any
-manual page turn resets the countdown.
+boundary, resuming via a `sessionStorage autoNextPage` flag and holding a wake lock. A manual page
+turn through the paging controls (keys, clicks, paginator, spacebar) resets the countdown; direct
+`goToPage()` jumps — the go-to-page prompt, overlay thumbnails and chapter selectors — do not.
 
 ## Frontend dependencies
 
