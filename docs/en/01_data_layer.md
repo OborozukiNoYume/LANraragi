@@ -104,6 +104,8 @@ Step-by-step through `do_search()` / `search_uncached()` in `lib/LANraragi/Model
 | `LRR_TOTALPAGESTAT` | String | Counter of total pages read, INCR'd on every progress update (`update_progress` in `lib/LANraragi/Controller/Api/Archive.pm`), read by `get_page_stat()` in `lib/LANraragi/Model/Stats.pm` |
 | `LRR_DUPLICATE_GROUPS` | Hash | `dupgp_<key>` to JSON array of archive IDs; produced by the duplicate-detection Minion task (`lib/LANraragi/Utils/Minion.pm`); read, pruned and rewritten by `lib/LANraragi/Controller/Duplicates.pm` (groups whose members vanished are dropped or rewritten, and a `delete` request clears the whole hash) |
 | `LRR_PLUGIN_<NAMESPACE>` | Hash | Per-plugin state, namespace uppercased: `enabled`, `customargs` (JSON array), `installed_path`, `installed_version`, `installed_registry`, `installed_sha256`, `type` (`lib/LANraragi/Utils/Plugins.pm`, `lib/LANraragi/Model/Plugins.pm`) |
+| `LRR_SERVER` | Hash | Server-state flags (`restart_pending`), read through `lib/LANraragi/Model/Server.pm` |
+| `REG_<timestamp>` / `REG_INDEX_<timestamp>` | Hash / String | Plugin registries and their cached `registry.json` indexes (see [04_plugins.md](04_plugins.md)) |
 
 `LRR_CONFIG` fields the code reads (non-exhaustive — the configuration page can write others; defaults shown as read by `lib/LANraragi/Model/Config.pm`):
 

@@ -243,7 +243,8 @@ parameters into `LRR_CONFIG` from a fixed whitelist — 13 scalars (`htmltitle`,
 `dirname`, `thumbdir`, `pagesize`, `tagrules`, `tempmaxsize`, `apikey`, `readerquality`,
 `sizethreshold`, `theme`, `language`, `excludednamespaces`) and 16 checkboxes (absent from the
 POST = `0`); anything else the form submits is ignored. `newpassword` is special-cased into a
-`{CRYPT}` bcrypt hash when `enablepass` is posted (a mismatched confirmation fails the save),
+`{CRYPT}` bcrypt hash when `enablepass` is posted and the field is non-empty (a blank field keeps
+the stored password; a mismatched confirmation fails the save),
 numeric fields are validated, and the `tagrules` textarea is additionally parsed into the
 `LRR_TAGRULES` list. The response is plain JSON and nothing restarts the server — tabs that need
 a restart just say so in their text.

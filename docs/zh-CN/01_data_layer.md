@@ -104,6 +104,8 @@ LANraragi 将其全部状态保存在单个 Redis 实例中，并划分到五个
 | `LRR_TOTALPAGESTAT` | 字符串 | 总阅读页数计数器，每次进度更新时 INCR（`lib/LANraragi/Controller/Api/Archive.pm` 中的 `update_progress`），由 `lib/LANraragi/Model/Stats.pm` 中的 `get_page_stat()` 读取 |
 | `LRR_DUPLICATE_GROUPS` | 哈希 | `dupgp_<key>` 到档案 ID 的 JSON 数组的映射；由重复检测 Minion 任务生成（`lib/LANraragi/Utils/Minion.pm`）；由 `lib/LANraragi/Controller/Duplicates.pm` 读取、修剪并重写（成员已消失的分组会被删除或重写，`delete` 请求会清空整个哈希） |
 | `LRR_PLUGIN_<NAMESPACE>` | 哈希 | 各插件的状态，插件命名空间转为大写：`enabled`、`customargs`（JSON 数组）、`installed_path`、`installed_version`、`installed_registry`、`installed_sha256`、`type`（`lib/LANraragi/Utils/Plugins.pm`、`lib/LANraragi/Model/Plugins.pm`） |
+| `LRR_SERVER` | 哈希 | 服务器状态标志（`restart_pending`），经 `lib/LANraragi/Model/Server.pm` 读取 |
+| `REG_<timestamp>` / `REG_INDEX_<timestamp>` | 哈希 / 字符串 | 插件注册表及其缓存的 `registry.json` 索引（见 [04_plugins.md](04_plugins.md)） |
 
 `LRR_CONFIG` 中代码会读取的字段（非穷举——配置页面还可以写入其他字段；默认值以 `lib/LANraragi/Model/Config.pm` 读取到的为准）：
 

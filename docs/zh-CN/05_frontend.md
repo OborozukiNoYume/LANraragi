@@ -233,8 +233,8 @@ wake lock。通过翻页控件（按键、点击、分页器、空格键）的�
 固定白名单复制进 `LRR_CONFIG`——13 个标量（`htmltitle`、`motd`、`dirname`、`thumbdir`、
 `pagesize`、`tagrules`、`tempmaxsize`、`apikey`、`readerquality`、`sizethreshold`、`theme`、
 `language`、`excludednamespaces`）和 16 个复选框（POST 中缺席即为 `0`）；表单提交的其余内容
-一律忽略。`newpassword` 被特殊处理：提交 `enablepass` 时散列为 `{CRYPT}` bcrypt 哈希（两次
-输入不一致会使保存失败），数值字段会做校验，`tagrules` 文本域还会被额外解析进 `LRR_TAGRULES`
+一律忽略。`newpassword` 被特殊处理：提交 `enablepass` 且字段非空时散列为 `{CRYPT}` bcrypt 哈希
+（留空则沿用已存储的密码；两次输入不一致会使保存失败），数值字段会做校验，`tagrules` 文本域还会被额外解析进 `LRR_TAGRULES`
 列表。响应是普通 JSON，没有任何逻辑会重启服务器——需要重启的标签页只在文案里说明。
 
 哪个标签页拥有哪个键并不总符合直觉：
