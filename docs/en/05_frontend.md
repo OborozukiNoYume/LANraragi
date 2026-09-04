@@ -88,8 +88,8 @@ DOM. All follow the same shape (`import * as Server from "./mod/server.js"; impo
 | `category.js` | Category management: create/update/delete categories (`/api/categories` CRUD), toggle membership per archive (`PUT`/`DELETE /api/categories/{id}/{archive}`), and set or clear the bookmark link (`/api/categories/bookmark_link`). |
 | `config.js` | Server configuration (all settings tabs). |
 | `duplicates.js` | Duplicate detection UI. |
-| `edit.js` | Archive metadata editing; tag input via `@jcubic/tagger` and SortableJS tag ordering, both loaded as classic globals (`tagger.js`, `Sortable.min.js`) by `templates/edit.html.tt2`. |
-| `logs.js` | Log viewer. |
+| `edit.js` | Archive metadata editing; tag input via `@jcubic/tagger` and SortableJS tag ordering, both loaded as classic globals (`tagger.js`, `Sortable.min.js`) by `templates/edit.html.tt2`. Its plugin panel runs metadata plugins synchronously through `POST /api/plugins/use`, applying the returned title/summary and adding returned tags one by one. |
+| `logs.js` | Log viewer: fetches raw text from `/logs/{type}?lines=N` for the five log files. |
 | `plugins.js` | Plugin management and upload. |
 | `reader.js` | One-line re-export: `export { initializeAll } from "./mod/reader_common.js";` — kept so `templates/reader.html.tt2` can load a stable URL while the implementation lives in `mod/`. |
 | `stats.js` | Statistics dashboard (jqCloud via `templates/stats.html.tt2`). |

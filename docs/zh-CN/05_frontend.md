@@ -87,8 +87,8 @@ DOM。它们都遵循相同形态（`import * as Server from "./mod/server.js"; 
 | `category.js` | 分类管理：创建/更新/删除分类（`/api/categories` CRUD），按档案切换成员关系（`PUT`/`DELETE /api/categories/{id}/{archive}`），以及设置或清除书签链接（`/api/categories/bookmark_link`）。 |
 | `config.js` | 服务器配置（全部设置标签页）。 |
 | `duplicates.js` | 重复检测界面。 |
-| `edit.js` | 档案元数据编辑；标签输入使用 `@jcubic/tagger`，标签排序使用 SortableJS，二者均由 `templates/edit.html.tt2` 作为经典全局脚本加载（`tagger.js`、`Sortable.min.js`）。 |
-| `logs.js` | 日志查看器。 |
+| `edit.js` | 档案元数据编辑；标签输入使用 `@jcubic/tagger`，标签排序使用 SortableJS，二者均由 `templates/edit.html.tt2` 作为经典全局脚本加载（`tagger.js`、`Sortable.min.js`）。其插件面板经 `POST /api/plugins/use` 同步运行元数据插件，应用返回的标题/摘要并逐个添加返回的标签。 |
+| `logs.js` | 日志查看器：从 `/logs/{type}?lines=N` 抓取五个日志文件的原始文本。 |
 | `plugins.js` | 插件管理与上传。 |
 | `reader.js` | 一行再导出：`export { initializeAll } from "./mod/reader_common.js";` —— 保留它是为了让 `templates/reader.html.tt2` 能加载一个稳定的 URL，而实现放在 `mod/` 中。 |
 | `stats.js` | 统计仪表盘（jqCloud，经 `templates/stats.html.tt2`）。 |
