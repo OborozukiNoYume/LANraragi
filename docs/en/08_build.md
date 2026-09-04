@@ -104,7 +104,7 @@ The file `lrr.conf` at the repo root is read by `lib/LANraragi/Model/Config.pm` 
 | `redis_database_metrics` | metrics data (default `4`) |
 | `base_url_path` | path-prefix deployment |
 
-`lib/LANraragi/Model/Config.pm` also honors environment overrides at startup: `LRR_REDIS_ADDRESS` (replaces `redis_address`), `LRR_DATA_DIRECTORY` and `LRR_THUMB_DIRECTORY` (content/thumb paths), `LRR_FORCE_DEBUG`, `LRR_DEVSERVER` (debug mode) and `LRR_DISABLE_OPENAPI` (skips serving the OpenAPI spec).
+`lib/LANraragi/Model/Config.pm` also honors environment overrides at startup: `LRR_REDIS_ADDRESS` (replaces `redis_address`), `LRR_DATA_DIRECTORY` and `LRR_THUMB_DIRECTORY` (content/thumb paths), `LRR_FORCE_DEBUG`, `LRR_DEVSERVER` (Redis client debug flag + verbose logging) and `LRR_DISABLE_OPENAPI` (skips serving the OpenAPI spec).
 
 ## Server startup
 
@@ -196,5 +196,5 @@ Two workflows produce the MSI on `windows-2025` with the same pipeline: `release
 ## Development environment
 
 - **Devcontainers** — `.devcontainer/` provides a Dockerfile and `devcontainer.json` (user `koyomi`, forwarded port 3000, `postCreateCommand` runs `npm run lanraragi-installer install-front` and starts the `valkey-server` service).
-- **Local dev** — `npm run dev-server` (add `-verbose` for `LRR_DEVSERVER` debug); stop stray workers with `npm run kill-workers`.
+- **Local dev** — `npm run dev-server` (add `-verbose` for `LRR_DEVSERVER` trace-level logging); stop stray workers with `npm run kill-workers`.
 - **systemd** — `tools/lanraragi-systemd.service` is a community example unit running `npm start`; it assumes a host Redis and notes it may need adapting.

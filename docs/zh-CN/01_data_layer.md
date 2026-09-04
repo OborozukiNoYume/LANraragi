@@ -12,7 +12,7 @@ LANraragi 将其全部状态保存在单个 Redis 实例中，并划分到五个
 
 | DB | `lrr.conf` 键 | 句柄来源 | 内容 |
 |----|----------------|-------------|----------|
-| 0 | `redis_database` | `get_redis()` | 档案哈希（40 字符 ID）、分类哈希（`SET_*`）、合集 ZSET（`TANK_*`）——外加一个游离的 `LRR_CONFIG` 字段，见下文书签说明 |
+| 0 | `redis_database` | `get_redis()` | 档案哈希（40 字符 ID）、分类哈希（`SET_*`）、戳记哈希（`STAMPS_*`）、合集 ZSET（`TANK_*`）——外加一个游离的 `LRR_CONFIG` 字段，见下文书签说明 |
 | 1 | `redis_database_minion` | `get_minion()` | Minion 任务队列。其 schema 完全由 `Minion::Backend::Redis` 拥有；LANraragi 只负责将任务入队，从不手工写入键 |
 | 2 | `redis_database_config` | `get_redis_config()` | `LRR_CONFIG`、`LRR_FILEMAP`、`LRR_TAGRULES`、`LRR_TOTALPAGESTAT`、`LRR_DUPLICATE_GROUPS`、`LRR_PLUGIN_*` |
 | 3 | `redis_database_search` | `get_redis_search()` | 搜索索引集合与搜索缓存（见专门章节） |
@@ -39,6 +39,7 @@ LANraragi 将其全部状态保存在单个 Redis 实例中，并划分到五个
 | `thumbjob` | 已入队的页面缩略图任务的 Minion 任务 ID；任务完成后删除 | `lib/LANraragi/Model/Archive.pm` 中的 `generate_page_thumbnails()`，清理位于 `lib/LANraragi/Utils/Minion.pm` |
 | `thumbhash` | 提取出的封面图像的 SHA-1，供元数据插件用于画廊查找（例如 `lib/LANraragi/Plugin/Metadata/EHentai.pm` 中的 `lookup_gallery()`） | `lib/LANraragi/Utils/Archive.pm` 中的 `extract_thumbnail()` |
 | `toc` | 将页码映射到章节标题的 JSON 对象 | `lib/LANraragi/Model/Archive.pm` 中的 `add_toc_entry()` / `remove_toc_entry()` |
+| `stamps` | 戳记 ID 的 JSON 数组 | `lib/LANraragi/Model/Stamp.pm` 中的 `add_stamp()` / `remove_stamp()` |
 
 **ID 生命周期。** `add_archive_to_redis()` 创建哈希后，立即把档案注册进 `LRR_TANKGROUPED`（新档案尚不可能属于任何合集）并打上 `isnew` 标记。如果文件内容的变化足以改变其哈希，`lib/LANraragi/Utils/Database.pm` 中的 `change_archive_id()` 会把哈希改名为新 ID，刷新 `arcsize`，并在所有引用旧 ID 的分类和合集中迁移成员关系。`clean_database()` 扫描 DB0 中后备文件已不存在的 40 字符键，并利用配置库的 `LRR_FILEMAP` 重新关联计算出的 ID 已发生漂移的文件。
 
@@ -160,6 +161,6 @@ LANraragi 将其全部状态保存在单个 Redis 实例中，并划分到五个
 | `LRR_TEMP_DIRECTORY` | 覆盖临时文件夹；同时存放服务器 PID 文件 | `lib/LANraragi/Utils/TempFolder.pm` 和 `script/launcher.pl` |
 | `LRR_LOG_DIRECTORY` | 覆盖日志文件夹 | `lib/LANraragi/Utils/Logging.pm` |
 | `LRR_FORCE_DEBUG` | 无视 `devmode` 设置强制开启开发模式 | `lib/LANraragi/Model/Config.pm` 中的 `enable_devmode()` |
-| `LRR_NETWORK` | 覆盖 Hypnotoad 监听地址/端口 | `script/launcher.pl` |
+| `LRR_NETWORK` | 覆盖启动器服务器的监听地址/端口（Morbo/Daemon/Prefork） | `script/launcher.pl` |
 
 同族还有另外两个变量：`LRR_DEVSERVER`（在 `get_redis_internal()` 中启用 Redis 客户端调试标志，并在 `lib/LANraragi/Utils/Logging.pm` 中启用一种日志模式）和 `LRR_DISABLE_OPENAPI`（在 `get_disable_openapi()` 中强制关闭 OpenAPI 文档）。

@@ -170,5 +170,5 @@ Minion 任务驱动，经 `exec_with_lock_pure` 的 `plugin-write:{NAMESPACE}` �
   `nHentaiSourceConverter.pm` —— 其中 `EhTagAutoUpdater.pm` 为本 fork 仓库专有，
   而非上游 LANraragi 自带。
 
-本页多处引用的 `Utils/Plugins.pm` 与 `Utils/Registry.pm` 内部细节见
-[03_utils.md](03_utils.md)。
+`Utils/Plugins.pm` 与 `Utils/Registry.pm` 的一行式概览见
+[03_utils.md](03_utils.md)；它们的内部机制在本页描述。

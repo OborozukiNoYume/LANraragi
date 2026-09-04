@@ -102,7 +102,7 @@ back as `zzzz`), or by `lastreadtime` — the lastread and tag paths fetch value
 
 1. rejects non-archives with `415`; computes the ID with `compute_id()` (SHA-1 of the first 512 KB of the file,
    via Database utils);
-2. **duplicate detection** — if the ID exists (and its file is on disk) or a same-named file exists, returns
+2. **upload-time duplicate rejection** (the `replacedupe` check) — if the ID exists (and its file is on disk) or a same-named file exists, returns
    `409` unless the `replacedupe` setting allows replacement, in which case the old archive/file is deleted
    first (filename collisions are resolved through the `LRR_FILEMAP` hash);
 3. registers the archive in Redis, applies caller-supplied tags — a `source:<url>` tag is also written into the

@@ -261,7 +261,7 @@
 
 ## OPDS
 
-OPDS 订阅源通过常规 OpenAPI 操作暴露（`GET /api/opds`、`GET /api/opds/{id}`、`GET /api/opds/{id}/pse`——见上文 *opds* 标签）。它提供由 `lib/LANraragi/Model/Opds.pm` 生成的 XML，并且是前文所述 `?key=` 认证回退的主要使用者，因为 OPDS 阅读器通常无法发送自定义头。OPDS 的具体风格在其专属章节中有详细介绍。
+OPDS 订阅源通过常规 OpenAPI 操作暴露（`GET /api/opds`、`GET /api/opds/{id}`、`GET /api/opds/{id}/pse`——见上文 *opds* 标签）。它提供由 `lib/LANraragi/Model/Opds.pm` 生成的 XML，并且是前文所述 `?key=` 认证回退的主要使用者，因为 OPDS 阅读器通常无法发送自定义头。OPDS 的具体风格在 [06_models.md](06_models.md) 的 *Reader & OPDS* 一节中有详细介绍。
 
 ## 保持规格健康
 

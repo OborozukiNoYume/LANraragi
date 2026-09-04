@@ -104,7 +104,7 @@ Docker 构建路径使用 `tools/build/docker/install-perl-deps.sh`，它会引�
 | `redis_database_metrics` | 指标数据（默认 `4`） |
 | `base_url_path` | 路径前缀部署 |
 
-`lib/LANraragi/Model/Config.pm` 在启动时还支持环境变量覆盖：`LRR_REDIS_ADDRESS`（替换 `redis_address`）、`LRR_DATA_DIRECTORY` 和 `LRR_THUMB_DIRECTORY`（内容/缩略图路径）、`LRR_FORCE_DEBUG`、`LRR_DEVSERVER`（调试模式）以及 `LRR_DISABLE_OPENAPI`（跳过 OpenAPI 规范的服务）。
+`lib/LANraragi/Model/Config.pm` 在启动时还支持环境变量覆盖：`LRR_REDIS_ADDRESS`（替换 `redis_address`）、`LRR_DATA_DIRECTORY` 和 `LRR_THUMB_DIRECTORY`（内容/缩略图路径）、`LRR_FORCE_DEBUG`、`LRR_DEVSERVER`（Redis 客户端调试标志 + 详细日志）以及 `LRR_DISABLE_OPENAPI`（跳过 OpenAPI 规范的服务）。
 
 ## 服务器启动
 
@@ -192,5 +192,5 @@ PID 文件杀死 Shinobu/Minion 子进程；先前安装的处理器只是被引
 ## 开发环境
 
 - **开发容器（Devcontainer）** —— `.devcontainer/` 提供一个 Dockerfile 和 `devcontainer.json`（用户 `koyomi`，转发端口 3000，`postCreateCommand` 运行 `npm run lanraragi-installer install-front` 并启动 `valkey-server` 服务）。
-- **本地开发** —— `npm run dev-server`（加 `-verbose` 可启用 `LRR_DEVSERVER` 调试）；用 `npm run kill-workers` 停掉游离的工作进程。
+- **本地开发** —— `npm run dev-server`（加 `-verbose` 可启用 `LRR_DEVSERVER` 的 trace 级日志）；用 `npm run kill-workers` 停掉游离的工作进程。
 - **systemd** —— `tools/lanraragi-systemd.service` 是一个运行 `npm start` 的社区示例 unit；它假定宿主机上已有 Redis，并注明可能需要自行调整。

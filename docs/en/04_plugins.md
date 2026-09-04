@@ -179,5 +179,5 @@ As of the baseline commit, the 32 shipped plugins are:
   `nHentaiSourceConverter.pm` — of which `EhTagAutoUpdater.pm` is specific to this fork rather
   than upstream LANraragi.
 
-See [03_utils.md](03_utils.md) for the `Utils/Plugins.pm` and `Utils/Registry.pm` internals
-referenced throughout this page.
+See [03_utils.md](03_utils.md) for the one-line overview of `Utils/Plugins.pm` and
+`Utils/Registry.pm`; their internals are described on this page.

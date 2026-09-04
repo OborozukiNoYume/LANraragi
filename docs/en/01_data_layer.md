@@ -12,7 +12,7 @@ Database numbers below are the defaults from `lrr.conf`; each is overridable via
 
 | DB | `lrr.conf` key | Handle from | Contents |
 |----|----------------|-------------|----------|
-| 0 | `redis_database` | `get_redis()` | Archive hashes (40-char IDs), category hashes (`SET_*`), tankoubon ZSETs (`TANK_*`) — plus one stray `LRR_CONFIG` field, see the bookmark note below |
+| 0 | `redis_database` | `get_redis()` | Archive hashes (40-char IDs), category hashes (`SET_*`), stamp hashes (`STAMPS_*`), tankoubon ZSETs (`TANK_*`) — plus one stray `LRR_CONFIG` field, see the bookmark note below |
 | 1 | `redis_database_minion` | `get_minion()` | Minion job queue. Schema owned entirely by `Minion::Backend::Redis`; LANraragi only enqueues jobs, never writes keys by hand |
 | 2 | `redis_database_config` | `get_redis_config()` | `LRR_CONFIG`, `LRR_FILEMAP`, `LRR_TAGRULES`, `LRR_TOTALPAGESTAT`, `LRR_DUPLICATE_GROUPS`, `LRR_PLUGIN_*` |
 | 3 | `redis_database_search` | `get_redis_search()` | Search index sets and the search cache (see dedicated section) |
@@ -39,6 +39,7 @@ The key is a 40-character SHA-1 hex ID computed by `compute_id()` in `lib/LANrar
 | `thumbjob` | Minion job ID of the queued page-thumbnail job; deleted when the job finishes | `generate_page_thumbnails()` in `lib/LANraragi/Model/Archive.pm`, cleanup in `lib/LANraragi/Utils/Minion.pm` |
 | `thumbhash` | SHA-1 of the extracted cover image, used by metadata plugins for gallery lookup (e.g. `lookup_gallery()` in `lib/LANraragi/Plugin/Metadata/EHentai.pm`) | `extract_thumbnail()` in `lib/LANraragi/Utils/Archive.pm` |
 | `toc` | JSON object mapping page numbers to chapter titles | `add_toc_entry()` / `remove_toc_entry()` in `lib/LANraragi/Model/Archive.pm` |
+| `stamps` | JSON array of stamp IDs | `add_stamp()` / `remove_stamp()` in `lib/LANraragi/Model/Stamp.pm` |
 
 **ID lifecycle.** `add_archive_to_redis()` creates the hash and immediately registers the archive in `LRR_TANKGROUPED` (new archives cannot be in a tank yet) and flags `isnew`. If a file's content changes enough to alter its hash, `change_archive_id()` in `lib/LANraragi/Utils/Database.pm` renames the hash to the new ID, refreshes `arcsize`, and migrates membership in every category and tankoubon that referenced the old ID. `clean_database()` sweeps DB0 for 40-character keys whose backing file no longer exists, and uses the config DB's `LRR_FILEMAP` to re-link files whose computed ID has drifted.
 
@@ -160,6 +161,6 @@ Environment overrides beat both `lrr.conf` and `LRR_CONFIG`:
 | `LRR_TEMP_DIRECTORY` | Overrides the temporary folder; also hosts the server PID file | `lib/LANraragi/Utils/TempFolder.pm` and `script/launcher.pl` |
 | `LRR_LOG_DIRECTORY` | Overrides the log folder | `lib/LANraragi/Utils/Logging.pm` |
 | `LRR_FORCE_DEBUG` | Forces dev mode regardless of the `devmode` setting | `enable_devmode()` in `lib/LANraragi/Model/Config.pm` |
-| `LRR_NETWORK` | Overrides the Hypnotoad listen address/port | `script/launcher.pl` |
+| `LRR_NETWORK` | Overrides the launcher server's listen address/port (Morbo/Daemon/Prefork) | `script/launcher.pl` |
 
 Two further variables exist in the same family: `LRR_DEVSERVER` (enables the Redis client debug flag in `get_redis_internal()` and a logging mode in `lib/LANraragi/Utils/Logging.pm`) and `LRR_DISABLE_OPENAPI` (forces the OpenAPI docs off in `get_disable_openapi()`).
