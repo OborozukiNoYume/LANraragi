@@ -1,509 +1,210 @@
-# 模型层深度分析
-
-> 分析日期：2026-01-11
-
-本文档提供模型层业务逻辑的详细分析。
-
----
-
-## 📊 模块概览
-
-| 模块 | 行数 | 主要功能 |
-|------|------|----------|
-| `Reader.pm` | 86 | 图像缩放、页面列表生成 |
-| `Upload.pm` | 268 | 文件上传处理、重复检测、自动插件执行 |
-| `Backup.pm` | 183 | 数据库备份/恢复（JSON 格式） |
-| `Opds.pm` | 161 | OPDS 目录生成 |
-| `Search.pm` | 524 | **核心** 搜索引擎 |
-| `Tankoubon.pm` | 527 | 合集（有序档案集） |
-| `Stats.pm` | ~300 | 统计计算 |
-| `Category.pm` | ~350 | 分类管理 |
-
----
-
-## 🔍 Search.pm - 核心搜索引擎
-
-### 核心函数
-
-#### `do_search($filter, $category_id, $start, $sortkey, $sortorder, $newonly, $untaggedonly, $grouptanks)`
-
-主搜索入口点：
-
-```perl
-sub do_search {
-    # 1. Check search cache
-    my ($cachehit, @filtered) = check_cache($cachekey, $cachekey_inv);
-    
-    # 2. If cache miss, execute full search
-    unless ($cachehit && $sortkey ne "lastread") {
-        @filtered = search_uncached(...);
-        $redis->hset("LRR_SEARCHCACHE", $cachekey, nfreeze \@filtered);
-    }
-    
-    # 3. Return paginated results
-    return ($total, $#filtered + 1, @filtered[$start..$end]);
-}
-```
-
-### 搜索语法解析 (`compute_search_filter`)
-
-| 语法 | 含义 | 示例 |
-|------|------|------|
-| `keyword` | 模糊匹配标题/标签 | `fate` |
-| `"exact"` | 精确匹配 | `"fate grand order"` |
-| `-keyword` | 排除 | `-yaoi` |
-| `namespace:value` | 命名空间搜索 | `artist:wada` |
-| `pages:>20` | 页数过滤 | `pages:>=50` |
-| `read:>0` | 已读页数 | `read:10` |
-| `?` `_` | 单字符通配符 | `fate_go` |
-| `*` `%` | 多字符通配符 | `fate*` |
-
-### 搜索流程
-
-```mermaid
-flowchart TD
-    A[Search Request] --> B{Cache Hit?}
-    B -->|Yes| C[Return Cache]
-    B -->|No| D[Parse Search Terms]
-    D --> E[Get Initial ID Set]
-    E --> F{Static Category?}
-    F -->|Yes| G[Intersect with Category Archives]
-    F -->|No| H[Add to Search Conditions]
-    G --> I[Apply newonly/untagged Filter]
-    H --> I
-    I --> J[Iterate Search Tokens]
-    J --> K{Exact Match?}
-    K -->|Yes| L[Query INDEX_tag]
-    K -->|No| M[Query INDEX_*tag*]
-    L --> N[Title Fuzzy Search]
-    M --> N
-    N --> O[Result Intersection/Difference]
-    O --> P[Sort]
-    P --> Q[Cache Results]
-    Q --> R[Return Paginated]
-```
-
-### 排序优化 (Lua 脚本)
-
-```perl
-# Use Lua to batch fetch data, reduce network requests
-my $script = <<'LUA';
-local result = {}
-for i=1,#ARGV do
-    local id = ARGV[i]
-    local value = redis.call('HGET', id, 'lastreadtime')
-    result[i] = {id, value or "0"}
-end
-return cjson.encode(result)
-LUA
-```
-
----
-
-## 📚 Tankoubon.pm - 合集系统
-
-### 概念
-
-Tankoubon（単行本）是有序的档案合集，类似于"播放列表"。
-
-### Redis 存储结构
-
-```
-TANK_1589141306 (Sorted Set):
-  score 0: "name_Collection Name"    # Metadata
-  score -1: "summary_Description"
-  score -2: "tags_Tags"
-  score 1: "archive_id_1"           # Archives in order
-  score 2: "archive_id_2"
-  score 3: "archive_id_3"
-```
-
-### 核心函数
-
-| 函数 | 用途 |
-|------|------|
-| `create_tankoubon($name, $tank_id)` | 创建合集 |
-| `get_tankoubon($tank_id, $fulldata, $page)` | 获取合集详情 |
-| `add_to_tankoubon($tank_id, $arc_id)` | 添加档案 |
-| `remove_from_tankoubon($tank_id, $arc_id)` | 移除档案（自动重排序） |
-| `update_archive_list($tank_id, $data)` | 批量更新顺序 |
-
-### Tank 分组（搜索聚合）
-
-启用 Tank 分组时：
-- 合集中的档案从主搜索中隐藏
-- 合集作为整体出现在搜索结果中
-- 使用 `LRR_TANKGROUPED` Redis Set 进行跟踪
-
-## 🔧 Reader.pm - 阅读器模型
-
-### 核心函数
-
-#### `resize_image($content, $quality, $threshold)`
-按需图像压缩以节省带宽：
-
-```perl
-sub resize_image ( $content, $quality, $threshold ) {
-    # Only compress if file size exceeds threshold
-    if ( ( length($content) / 1024 ) > $threshold ) {
-        return $resampler->resize_page( $content, $quality, "jpg" );
-    }
-    return $content;
-}
-```
-
-**参数：**
-- `$content`：图像二进制数据
-- `$quality`：JPEG 质量 (0-100)
-- `$threshold`：触发压缩的文件大小阈值 (KB)
-
-#### `build_reader_JSON($self, $id, $force)`
-构建阅读器页面列表：
-
-```perl
-sub build_reader_JSON ( $self, $id, $force ) {
-    my $archive = get_archive_path( $redis, $id );
-    my @images = get_filelist($archive, $id);
-    
-    foreach my $imgpath (@images) {
-        # URI encoding
-        $imgpath = uri_escape_utf8(redis_decode($imgpath));
-        $imgpath =~ s!%2F!/!g;  # Preserve slashes
-        
-        # Build API URL
-        push @images_browser, "/api/archives/$id/page?path=$imgpath";
-    }
-    
-    # Update page count
-    $redis->hset( $id, "pagecount", scalar @images );
-    
-    return { pages => \@images_browser };
-}
-```
-
-**返回格式：**
-```json
-{
-  "pages": [
-    "/api/archives/{id}/page?path=001.jpg",
-    "/api/archives/{id}/page?path=002.jpg"
-  ]
-}
-```
-
----
-
-## 📤 Upload.pm - 上传处理模型
-
-### 核心函数
-
-#### `handle_incoming_file($tempfile, $catid, $tags, $title, $summary)`
-
-完整上传处理流程：
-
-```mermaid
-flowchart TD
-    A[Receive File] --> B{Is Archive?}
-    B -->|No| C[Return 415]
-    B -->|Yes| D[Compute ID]
-    D --> E{Already Exists?}
-    E -->|Yes and No Replace| F[Return 409]
-    E -->|Yes and Replace| G[Delete Old Archive]
-    E -->|No| H[Add to Redis]
-    G --> H
-    H --> I[Set tags/title/summary]
-    I --> J[Move File to Content Dir]
-    J --> K[Add timestamp/pagecount/size]
-    K --> L[Generate Thumbnail]
-    L --> M[Execute autoplugin]
-    M --> N{Category Specified?}
-    N -->|Yes| O[Add to Category]
-    N -->|No| P[Return Success]
-    O --> P
-```
-
-**关键处理步骤：**
-
-1. **文件验证**
-```perl
-unless ( is_archive($filename) ) {
-    return ( 415, "deadbeef", $filename, "Unsupported File Extension" );
-}
-```
-
-2. **ID 计算**（基于文件内容 SHA1）
-```perl
-my $id = compute_id($tempfile);
-```
-
-3. **重复检测**
-```perl
-my $isdupe = $redis->exists($id) && -e get_archive_path($redis, $id);
-if ( (-e $output_file || $isdupe) && !$replace_dupe ) {
-    return ( 409, $id, $filename, "This file already exists" );
-}
-```
-
-4. **两阶段文件移动**（防止 Shinobu 提前检测）
-```perl
-move_path( $tempfile, $output_file . ".upload" );  # First move as .upload
-rename_path( $output_file . ".upload", $output_file );  # Then rename to trigger update
-```
-
-5. **来源 URL 索引**
-```perl
-if ( $t =~ /source:(.*)/i ) {
-    $redis_search->hset( "LRR_URLMAP", trim_url($url), $id );
-}
-```
-
-#### `download_url($url, $ua)`
-
-远程文件下载：
-
-```perl
-sub download_url ( $url, $ua ) {
-    my $tx = $ua->max_response_size(0)->max_redirects(5)->get($url);
-    
-    # Content-Disposition parsing
-    if ( $content_disp =~ /filename="(.*)"/ ) {
-        $filename = $1;
-    } elsif ( $content_disp =~ /filename\*=UTF-8''(.*)/ ) {
-        $filename = uri_unescape($1);  # RFC 5987
-    }
-    
-    # Windows illegal character cleanup
-    $filename =~ s@[\\/:\\"*?<>|]+@@g;
-    
-    # Filename length limit (CryptoFS: 143, Normal: 255)
-    while ( get_bytelength($filename . $ext . ".upload") > $byte_limit ) {
-        $filename = substr($filename, 0, -1);
-    }
-    
-    $tx->result->save_to("$tempdir/$filename");
-    return "$tempdir/$filename";
-}
-```
-
----
-
-## 💾 Backup.pm - 备份/恢复模型
-
-### 备份 JSON 结构
-
-```json
-{
-  "archives": [
-    {
-      "arcid": "abc123...",
-      "title": "Comic Title",
-      "tags": "artist:name, parody:series",
-      "summary": "Description",
-      "thumbhash": "def456...",
-      "filename": "file.zip"
-    }
-  ],
-  "categories": [
-    {
-      "catid": "SET_123456",
-      "name": "Favorites",
-      "search": "",
-      "archives": ["abc123", "def456"]
-    }
-  ],
-  "tankoubons": [
-    {
-      "tankid": "TANK_789012",
-      "name": "Collection Name",
-      "archives": ["abc123", "def456"]
-    }
-  ]
-}
-```
-
-### `build_backup_JSON()`
-
-```perl
-# Backup categories
-my @cats = $redis->keys('SET_??????????');
-foreach my $key (@cats) {
-    my %data = $redis->hgetall($key);
-    push @{$backup{categories}}, {
-        catid => $key,
-        name => redis_decode($data{name}),
-        archives => decode_json($data{archives})
-    };
-}
-
-# Backup collections
-my @tanks = LANraragi::Model::Tankoubon::get_tankoubon_list(-1);
-foreach my $tank (@tanks) {
-    push @{$backup{tankoubons}}, {...};
-}
-
-# Backup archive metadata
-my @keys = $redis->keys('?' x 40);  # 40 chars = Archive ID
-foreach my $id (@keys) {
-    push @{$backup{archives}}, {
-        arcid => $id,
-        title => redis_decode($hash{title}),
-        tags => redis_decode($hash{tags}),
-        ...
-    };
-}
-```
-
-### `restore_from_JSON($json)`
-
-恢复流程：
-1. 调用 `clean_database()` 清理无效条目
-2. 恢复分类（创建 + 添加成员）
-3. 恢复单行本
-4. 恢复档案元数据（仅更新现有）
-5. 调用 `invalidate_cache()` 刷新缓存
-
----
-
-## 📚 Opds.pm - OPDS 协议支持
-
-### OPDS 输出结构
-
-```xml
-<feed xmlns="http://www.w3.org/2005/Atom">
-  <title>{server_title}</title>
-  <entry>
-    <title>{archive_title}</title>
-    <author><name>{artist}</name></author>
-    <dc:language>{language}</dc:language>
-    <updated>{lastreaddate}</updated>
-    <link rel="http://opds-spec.org/acquisition" 
-          type="{mimetype}" 
-          href="/api/archives/{id}/download"/>
-    <link rel="http://opds-spec.org/image" 
-          type="image/jpeg" 
-          href="/api/archives/{id}/thumbnail"/>
-  </entry>
-</feed>
-```
-
-### 关键函数
-
-#### `get_opds_data($id)`
-从档案元数据生成 OPDS 条目：
-
-```perl
-# Extract metadata from tags
-$arcdata->{author}   = get_tag_with_namespace("artist", $tags);
-$arcdata->{language} = get_tag_with_namespace("language", $tags);
-$arcdata->{circle}   = get_tag_with_namespace("group", $tags);
-
-# MIME type mapping
-if ($file =~ /\.pdf$/)     { $arcdata->{mimetype} = "application/pdf"; }
-elsif ($file =~ /\.(rar|cbr)$/) { $arcdata->{mimetype} = "application/x-cbr"; }
-elsif ($file =~ /\.epub$/) { $arcdata->{mimetype} = "application/epub+zip"; }
-else                       { $arcdata->{mimetype} = "application/x-cbz"; }
-```
-
-#### `render_archive_page($mojo, $id, $page)`
-直接提供单页图像（用于 OPDS 阅读器）：
-
-```perl
-my @images = get_filelist($archive, $id);
-my $image = $images[$page - 1];
-LANraragi::Model::Archive::serve_page($mojo, $id, $image);
-```
-
----
-
-## 📂 Category.pm - 分类管理模型
-
-### 概念
-
-分类分为两种类型：
-- **静态分类**：手动添加的档案集合
-- **动态分类**：基于搜索条件自动匹配的集合
-
-### Redis 存储结构
-
-```
-SET_1589141306 (Hash):
-  name: "Category Name"
-  search: ""              # Empty string = Static category
-  pinned: "1"             # Is pinned
-  archives: '["id1","id2"]'  # JSON array (static only)
-```
-
-### 核心函数
-
-| 函数 | 用途 |
-|------|------|
-| `get_category_list()` | 获取所有分类 |
-| `get_static_category_list()` | 仅获取静态分类 |
-| `get_categories_containing_archive($id)` | 查找包含档案的分类 |
-| `get_category($id)` | 获取单个分类详情 |
-| `create_category($name, $favtag, $pinned, $id)` | 创建/更新分类 |
-| `delete_category($id)` | 删除分类 |
-| `add_to_category($cat_id, $arc_id)` | 添加档案到静态分类 |
-| `remove_from_category($cat_id, $arc_id)` | 从分类中移除档案 |
-
-### 书签链接功能
-
-```perl
-# Link bookmark button to a static category
-$redis->hset('LRR_CONFIG', 'bookmark_link', $cat_id);
-
-# Get/remove bookmark link
-get_bookmark_link();
-update_bookmark_link($cat_id);
-remove_bookmark_link();
-```
-
----
-
-## 📊 Stats.pm - 统计和索引构建
-
-### 核心函数
-
-`build_stat_hashes()` 是重建搜索索引的核心函数，构建以下 Redis 结构：
-
-| Redis 键 | 类型 | 用途 |
-|----------|------|------|
-| `LRR_URLMAP` | Hash | URL → 档案 ID 映射 |
-| `LRR_STATS` | Sorted Set | 标签云统计（分数 = 出现次数） |
-| `LRR_UNTAGGED` | Set | 未标记档案 ID |
-| `LRR_NEW` | Set | 新档案 ID (isnew=true) |
-| `LRR_TITLES` | Sorted Set | 标题索引（`title\0id` 格式） |
-| `LRR_TANKGROUPED` | Set | 合集分组后的可见 ID |
-| `INDEX_{tag}` | Set | 每个标签的档案 ID 索引 |
-
-### 索引构建流程
-
-```mermaid
-flowchart TD
-    A[Start build_stat_hashes] --> B[Get All Archive IDs]
-    B --> C[Get All Tankoubons]
-    C --> D[Iterate Tanks]
-    D --> E[Add Tank ID to TANKGROUPED]
-    E --> F[Index Tags in Tank Archives]
-    F --> G[Iterate Remaining Archives]
-    G --> H{Has Tags?}
-    H -->|No| I[Add to LRR_UNTAGGED]
-    H -->|Yes| J[Index Tags]
-    J --> K{Has source: Tag?}
-    K -->|Yes| L[Add to LRR_URLMAP]
-    K -->|No| M[Continue]
-    L --> M
-    M --> N[Add to LRR_TITLES]
-    N --> O[Check isnew]
-    O --> P[End]
-```
-
-### 其他关键函数
-
-| 函数 | 用途 |
-|------|------|
-| `get_archive_count()` | 获取档案数量（含 Tank 分组） |
-| `get_page_stat()` | 获取总页数统计 |
-| `is_url_recorded($url)` | 检查 URL 是否已在库中 |
-| `build_tag_stats($minscore)` | 构建标签云 JSON |
-| `compute_content_size()` | 计算库总大小 (GB) |
+# 06 - 模型层
+
+> 基准 commit `2094cc1d`（2026-09-04）。事实已对照代码核实——生成时已完成引证核查。
+
+模型层（`lib/LANraragi/Model/`）承载 LANraragi 位于控制器与 Redis 之间的业务逻辑。
+每个模块都通过 `LANraragi::Model::Config` 的连接工厂访问 Redis，而大多数长时间运行的工作
+（缩略图生成、插件运行、备份）被委派给 Minion 任务——任务本身定义在
+`lib/LANraragi/Utils/Minion.pm`，并在“实用工具”（Utilities）一章中介绍；本章仅引用它们。
+
+`lib/LANraragi/Model/` 中的全部 16 个模块：
+
+| 模块 | 一句话职责 |
+|---|---|
+| `Config.pm` | 配置访问：Redis 连接工厂、带默认值的 `LRR_CONFIG` 读取。 |
+| `Search.pm` | 搜索引擎：令牌解析、过滤、排序、结果缓存。 |
+| `Archive.pm` | 档案生命周期：页面/缩略图提供、元数据、ToC、删除。 |
+| `Upload.pm` | 将上传/下载的文件纳入资料库。 |
+| `Backup.pm` | 全部用户元数据的 JSON 导出/导入。 |
+| `Category.pm` | 分类（`SET_` 键），包括书签链接。 |
+| `Tankoubon.pm` | 单行本（Tankoubon）集合（`TANK_` 键，各为一个 Redis 有序集合）。 |
+| `Reader.pm` | 服务器端阅读器支持：页面列表 JSON、基于质量的尺寸调整。 |
+| `Plugins.pm` | 插件发现、执行、从注册表安装/卸载。 |
+| `Registry.pm` | 插件注册表（GitHub/Gitea/CDN/本地源）。 |
+| `Stats.pm` | 搜索索引与标签统计的构建。 |
+| `Stamp.pm` | 页面戳记/书签（`STAMPS_*` 键）。 |
+| `Opds.pm` | OPDS 1.2 目录 + PSE 页面流式传输。 |
+| `Metrics.pm` | Prometheus 指标收集。 |
+| `Setup.pm` | 首次安装动作（默认分类 + 默认注册表）。 |
+| `Server.pm` | 服务器状态标志（重启待定标记）。 |
+
+## 配置：`Model/Config.pm`
+
+`Config.pm` 在编译期引导加载 `lrr.conf`（可通过 `LRR_REDIS_ADDRESS` 覆盖），并暴露五个逻辑
+Redis 数据库：档案（`redis_database` 0）、Minion（`redis_database_minion` 1）、配置
+（`redis_database_config` 2）、搜索（`redis_database_search` 3）、指标（`redis_database_metrics` 4），与
+`lrr.conf` 中的默认值一致。五个连接工厂发放通往正确数据库的新建连接——
+`get_redis()`、`get_redis_config()`、`get_redis_search()`、`get_redis_metrics()`，全部构建于
+`get_redis_internal()` 之上——另有 `get_minion()`，为 Minion 数据库构造
+`Minion` 客户端。调用方有责任对自己取得的连接调用 `quit()`。
+
+运行时设置位于配置数据库的 `LRR_CONFIG` 哈希中；`get_redis_conf($param, $default)` 返回
+存储值或内置默认值，一长串带类型的访问器封装了它（`get_pagesize`、
+`get_thumbdir`、`get_userdir`、`enable_resize`、`get_threshold`、`get_readquality`、`enable_pass`、
+`enable_nofun`、`enable_cors`、`enable_metrics`、`enable_localprogress`、`enable_authprogress`、
+`get_replacedupe`、`get_hqthumbpages`、`get_jxlthumbpages`、`get_style`、`get_language`、……）。
+`get_baseurl()` 为前端章节所述的路径前缀处理提供输入。
+
+## 搜索：`Model/Search.pm`
+
+`do_search($filter, $category_id, $start, $sortkey, $sortorder, $newonly, $untaggedonly, $grouptanks,
+$hidecompleted)` 接收九个参数。在 `LAST_JOB_TIME` 键存在（即索引构建任务运行过一次）之前它拒绝
+执行，并返回 `(total, filtered_count, @ids)`。
+
+缓存：完整结果列表经 Storable `nfreeze` 后存入搜索数据库的 `LRR_SEARCHCACHE` 哈希，缓存
+键由九个参数中的八个构成（不含 `$start`，它在切分缓存列表时才应用）。`check_cache()` 还会查找排序顺序*相反*的键——由于反转一个已排序的列表
+会得到相反的顺序，这将缓存空间减半（只有带键的前缀被反转，因此缺少排序命名空间的档案仍留在
+末尾）。存在两种绕过：`lastread` 排序总是不经缓存运行（阅读进度的更新不会使缓存失效），而任何
+结构性变更都会调用 `LANraragi::Utils::Database` 的 `invalidate_cache()`。
+
+过滤（`search_uncached()`）从全部 40 字符的档案 ID 出发——或在 `$grouptanks` 将单行本与其档案
+分组时改用 `LRR_TANKGROUPED` 集合——然后逐令牌与下列项求交集：
+
+- 标签匹配使用 `INDEX_<tag>` 集合（未加引号时为模糊匹配；令牌中的命名空间会锚定索引扫描），
+- 标题匹配使用对 `LRR_TITLES` 有序集合的 `zscan`（成员为 `title\0id`），
+- 集合过滤器：分类档案或动态分类自身的搜索令牌、`LRR_UNTAGGED`、`LRR_NEW`，
+- `$hidecompleted`：一个 Lua 脚本按 ID 批量检查 `progress/pagecount > 0.85`（带逐 ID 的 HGET 回退），
+- `pages:`/`read:` 令牌以 `=`、`>`、`>=`、`<`、`<=` 与 `pagecount`/`progress` 哈希字段比较。
+
+搜索语法，来自 `compute_search_filter()`：逗号分隔的令牌；`"quoted"` 或末尾的 `$` 强制精确
+匹配；前导 `-` 表示排除；`?`/`_` 匹配单个字符，`*`/`%` 匹配任意数量字符（重写为 Redis glob
+元字符）；`namespace:value` 限定到某个命名空间。排序（`sort_results()`）要么按标题经由
+`LRR_TITLES` 的自然排序，要么按任意标签命名空间（用正则提取，缺失值作为 `zzzz` 沉到
+末尾），要么按 `lastreadtime`——lastread 与标签路径通过 Lua 脚本（`script_load` + `evalsha`）
+批量取值，并带有纯 Perl 回退（`_fallback_lastread`、`_fallback_tags`），而
+`_impute_tank_date_tags()` 从成员档案为单行本推断 `date_added`/`timestamp` 排序键。
+
+## 档案：`Model/Archive.pm`
+
+- `serve_page($id, $path)`：按需从档案中提取文件，经由
+  `get_page_data()`/`LANraragi::Utils::PageCache`（缓存键 `page/$id/$path`）；启用尺寸调整时，
+  结果会经过 `Model::Reader::resize_image()` 并缓存于 `resize_page/$id/$path/$threshold/$quality`。
+  CBW（网络流式）档案还会触发 `cbw_prefetch()` 预热接下来的页面。
+- `serve_thumbnail($id)` / `update_thumbnail($id)`：缩略图位于缩略图目录之下，按 ID 的前两个字符
+  分目录存放，格式为 `jpg` 或 `jxl`（取决于 `get_jxlthumbpages()`），并带跨格式回退。缺失的
+  缩略图要么返回 `public/img/noThumb.png`，要么——当客户端传入 `no_fallback=true` 时——将
+  `thumbnail_task` Minion 任务入队并返回 `202` 与任务 ID。
+- `generate_page_thumbnails($id)`：扫描缺失的逐页缩略图并将 `page_thumbnails` Minion
+  任务入队（以 `thumbjob` 哈希字段去重；进行中返回 `202`）。
+- `update_metadata($id, $title, $tags, $summary)`：修剪输入，经由数据库工具写入，并使缓存失效。
+- ToC 管理：`add_toc_entry($id, $page, $title)` / `remove_toc_entry($id, $page)` 维护档案的
+  `toc` JSON 哈希（{ page → title }），阅读器覆盖层将其转换为章节。
+- `delete_archive($id)`：将档案从每个包含它的单行本和分类中移除，删除文件与缩略图
+  的链接，并删除 Redis 条目。
+
+## 入库：`Model/Upload.pm`
+
+`handle_incoming_file($tempfile, $catid, $tags, $title, $summary)` 返回 `(status, id, name, message)`：
+
+1. 以 `415` 拒绝非档案文件；用 `compute_id()` 计算 ID（取文件前 512 KB 的 SHA-1，
+   经由数据库工具）；
+2. **重复检测**——如果该 ID 已存在（且其文件在磁盘上）或存在同名文件，返回
+   `409`，除非 `replacedupe` 设置允许替换；允许时先删除旧档案/文件（文件名冲突通过
+   `LRR_FILEMAP` 哈希解决）；
+3. 在 Redis 中登记档案，应用调用方提供的标签——`source:<url>` 标签还会写入
+   `LRR_URLMAP` 哈希（搜索数据库），使 URL 查询无需完整重建索引即可解析——随后是可选的标题/摘要；
+4. 分两阶段移动文件：temp → `<target>.upload` → 在内容文件夹内重命名，这样 Shinobu
+   文件监视器只会看到完整文件（任一移动失败时返回 `500` 消息）；
+5. 添加 `date_added`/页数/大小，生成缩略图，运行自动插件
+   （`Plugins::exec_enabled_plugins_on_file`），可选地加入分类，并使搜索缓存失效。
+
+`download_url($url, $ua)` 实现下载器的另一半：重试获取 `Content-Disposition` 头，解码
+文件名（UTF-8/Latin-1/RFC 5987/URL 尾部回退），去除 Windows 非法字符，按
+文件系统字节上限截断（依 `enable_cryptofs` 为 143/255），并将文件暂存在 `File::Temp`
+目录中交给 `handle_incoming_file`。
+
+## 备份：`Model/Backup.pm`
+
+`build_backup_JSON($job)` 遍历 Redis，生成包含四个顶层数组的 JSON 文档——`categories`
+（来自 `SET_` 键：catid/name/search/archives）、`tankoubons`（经由
+`Tankoubon::get_tankoubon_list(-1)`：tankid/name/summary/tags/archives）、`stamps`（来自
+`STAMPS_*` 键：stamp_id/content/position/archive_id）和
+`archives`（全部 40 字符 ID 及 arcid/title/tags/summary/thumbhash/filename，外加档案级的 `stamps`
+列表和 `toc` 字段）。作为 Minion 任务调用时，它通过 `$job->note(...)` 报告任务进度。
+
+`restore_from_JSON($json, $job)` 先调用 `clean_database()` 清除既有用户元数据，然后重建
+分类（`Category::create_category` + `add_to_category`）、单行本（`create_tankoubon`、
+`update_metadata`、`set_tank_tags`、`update_archive_list`）、**仅针对仍然存在的 ID** 的档案
+元数据（title/tags/summary/thumbhash/stamps/toc——缺失时 `stamps`/`toc` 默认为 `[]`/`{}`），最后
+是 `STAMPS_*` 哈希，同样仅当其档案幸存时才恢复。结束时触发 `invalidate_cache()`。
+
+## 集合：`Model/Category.pm` 与 `Model/Tankoubon.pm`
+
+分类是带有 `name`、`search`（动态分类）和 `archives`（JSON 数组；
+静态分类）的 `SET_<timestamp>` 哈希。`create_category()` 可以复用调用方提供的 ID（供备份
+恢复使用）；`add_to_category()`/`remove_from_category()` 维护该数组；`get_bookmark_link()`/
+`update_bookmark_link()` 管理与阅读器书签按钮绑定的那个特殊分类（以
+`/api/categories/bookmark_link` 暴露给前端，并以 `bookmarkCategoryId` 缓存在 localStorage 中）。
+
+单行本（Tankoubon）是键为 `TANK_<timestamp>`（15 字符）的单个 Redis **有序集合**：成员档案位于
+分值 `>= 1`（分值*即*页序），而元数据存放在非正分值的保留成员中——`name` 位于
+`0`、`summary` 位于 `-1`、`tags` 位于 `-2`、`progress` 位于 `-3`（参见 `%TANK_METADATA` 映射和
+`fetch_metadata_fields()`）。`get_tankoubon()` 重组该对象（通过 `zrangebyscore ...
+LIMIT` 分页）；`update_archive_list()`/`add_to_tankoubon()`/`remove_from_tankoubon()` 重写成员分值；
+`update_tank_progress($tank_id, $page)` 通过 `update_metadata_field()` 记录阅读位置；
+`set_tank_tags()` 还维护标签索引；`get_tank_unified_tags()` 合并成员标签（带推断的
+`date_added`）用于搜索/排序。单行本在索引构建期间登记到 `LRR_TANKGROUPED` 集合。
+
+## 阅读器与 OPDS：`Model/Reader.pm`、`Model/Opds.pm`
+
+`Reader.pm` 刻意保持小巧：`build_reader_JSON()` 打开档案，返回面向浏览器的页面
+路径（URL 转义，每个指向 `/api/archives/{id}/page?path=...`）并刷新存储的 `pagecount`；
+`resize_image($content, $quality, $threshold)` 是模型级的尺寸调整入口，内部对由
+`LANraragi::Utils::Resizer` 的 `get_resizer()` 构建的重采样器调用
+`resize_page()`（当没有可用的重采样器或图片小于尺寸阈值时，该调用是无操作，直接返回
+原始字节）。
+
+`Opds.pm` 渲染 OPDS 1.2 源：`generate_opds_catalog()` 通过
+`Search::do_search` 按页/分类列出档案，`generate_opds_item()` 渲染单个条目，二者都经由
+`opds`/`opds_entry` 模板。`get_opds_data()` 从 `artist`/`language`/`group`/`event` 标签推导
+作者/语言/社团/活动，并映射文件扩展名 → MIME 类型：`.pdf` → `application/pdf`、`.rar`/`.cbr` →
+`application/x-cbr`、`.epub` → `application/epub+zip`、`.cbw` → `application/xml`，其余
+（zip/cbz）→ `application/x-cbz`。PSE（Page Streamed Extension）支持位于同样的模板中：条目内嵌
+指向 `/api/opds/{id}/pse?page={pageNumber}` 的
+`http://vaemendis.net/opds-pse/stream` 链接，带 `pse:count`/`pse:lastRead` 属性；该端点
+（`Controller/Api/Other.pm` 的 `serve_opds_page`）调用
+`Opds::render_archive_page()`，后者根据档案的文件列表解析页码，并经由
+`Archive::serve_page()` 提供该页。
+
+## 插件与注册表：`Model/Plugins.pm`、`Model/Registry.pm`
+
+`Plugins.pm`（最大的模型模块）涵盖：
+
+- 执行：`exec_enabled_plugins_on_file($id)`（上传后的自动插件轮）、`exec_metadata_plugin()`、
+  `exec_script_plugin()`、`exec_download_plugin()`、`exec_login_plugin()`（下载器使用的已配置
+  登录插件）。
+- 安装状态：插件记录在 `LRR_PLUGIN_<NAMESPACE>` 哈希之下。`install_plugin($namespace, ...)`
+  区分内置插件与注册表托管（“managed”）插件，没有 `force` 时拒绝跨注册表覆盖，并从其
+  所属注册表复制插件文件进来；`uninstall_plugin()` 删除托管插件文件，以 `403` 拒绝
+  卸载内置插件，注销该插件，并通过 `Server::set_restart_pending()` 标记需要
+  重启服务器。`scan_plugins()`（也在每次启动时由 `lib/LANraragi.pm` 运行）将发现的
+  插件类（经 `LANraragi::Utils::Plugins` 的 `Module::Pluggable` 发现）与 Redis
+  登记状态对账。
+
+`Registry.pm` 管理插件的来源——注册表条目（`REG_<timestamp>` ID）支持四种
+提供方（`github`、`gitea`、`cdn`、`local`，见 `%PROVIDER_FIELDS`），提供创建/更新/删除/列表操作，外加
+`refresh_registry()`（抓取并校验注册表索引，上限为 100 MB 的 `MAX_REGISTRY_INDEX_SIZE`）
+和默认注册表访问器。`lib/LANraragi.pm` 在启动时刷新每个注册表。
+
+## 小型模块
+
+- **`Stamp.pm`** —— 页面戳记（“给第 N 页 bookmark 一条笔记”）。`add_stamp()` 创建
+  `STAMPS_<page>_<millis>` 哈希（content/position/archive_id）并把 ID 追加到档案的 `stamps`
+  JSON 数组；`get_stamps_by_page()`、`get_stamped_pages()`、`update_stamp()`、`remove_stamp()`
+  补全 CRUD。
+- **`Stats.pm`** —— `build_stat_hashes()`（作为 `build_stat_hashes` Minion 任务在启动时和缓存
+  失效时运行）在一个 WATCH/MULTI 事务中重建整个搜索数据库：`flushdb()`，然后逐
+  档案/单行本构建 `INDEX_<tag>` 集合、`LRR_TITLES`、`LRR_STATS`（标签计数器）、`LRR_UNTAGGED`、
+  `LRR_NEW`、`LRR_TANKGROUPED`，最后写入 `LAST_JOB_TIME` 时间戳。还暴露针对 `LRR_URLMAP` 的
+  `is_url_recorded()`。
+- **`Metrics.pm`** —— Prometheus 支持，由 `enablemetrics` 设置门控：
+  `collect_request_metrics()`（经由安装在 `lib/LANraragi.pm` 中的 `before/after_dispatch`
+  钩子）、按 30 秒循环定时器运行的 `collect_process_metrics()` 和
+  `flush_request_metrics_to_redis()`、worker 跟踪（`register_worker`/`unregister_worker`），
+  以及 `get_prometheus_*` 渲染器。
+- **`Setup.pm`** —— `first_install_actions()` 通过 `LRR_CONFIG → htmltitle` 的缺失检测全新
+  安装，创建默认的“🔖 Favorites”分类，将其链接到书签按钮，并播种默认插件
+  注册表（“Ougi”、`https://github.com/Difegue/Ougi.git`、分支 `main`）。
+- **`Server.pm`** —— 配置数据库中仅有的一个 `LRR_SERVER` 哈希，持有 `restart_pending`
+  标志：`set_restart_pending()`（插件安装/卸载后）、`clear_restart_pending()`（启动时）、
+  `is_restart_pending()`（由 UI 轮询以提示重启）。

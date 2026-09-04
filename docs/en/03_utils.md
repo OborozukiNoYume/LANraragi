@@ -1,268 +1,183 @@
-# Infrastructure and Utilities
-
-> **Analyzed Files**: `Archive.pm`, `Minion.pm`, `Resizer.pm`, `Tags.pm`, `Generic.pm`
-
----
-
-## 📦 Archive Handling (Archive.pm)
-
-### Core Dependencies
-
-| Perl Module | Purpose |
-|-------------|---------|
-| `Archive::Libarchive` | ZIP/RAR/7z formats |
-| `Archive::Libarchive::Peek` | Peek without extraction |
-| GhostScript (CLI) | PDF → JPG conversion |
-
-### Main Functions
-
-| Function | Purpose |
-|----------|---------|
-| `get_filelist($archive, $id)` | Get file list (natural sorted) |
-| `extract_file_from_archive($archive, $file)` | Extract single file to temp |
-| `extract_single_file_to_path($archive, $file, $dest)` | Extract to specific path |
-| `is_file_in_archive($archive, $wanted)` | Check if file exists in archive |
-| `extract_thumbnail($thumbdir, $id, $page, $setcover, $usehq)` | Generate thumbnail |
-
-### File Sorting Logic
-
-```perl
-# Natural sort: pad numbers to 4 digits
-sub expand {
-    my $file = shift;
-    $file =~ s{(\d+)}{sprintf "%04d", $1}eg;
-    return lc($file);
-}
-
-# Special sorting: cover first, credits last
-@files = ( @cover_pages, @other_pages, @credit_pages );
-```
-
-### PDF Handling
-
-Using GhostScript CLI:
-```bash
-# Extract all pages
-gs -dNOPAUSE -sDEVICE=jpeg -r200 -o "$dest/%d.jpg" "$pdf"
-
-# Extract specific page
-gs -dNOPAUSE -dFirstPage=$page -dLastPage=$page -sDEVICE=jpeg -r200 -o "$out" "$pdf"
-```
-
-### Apple Resource Fork Filtering
-
-Automatically filters macOS resource fork files:
-- `__MACOSX/` directory
-- `._*` prefixed files
-- AppleDouble/AppleSingle magic number detection
-
----
-
-## ⚙️ Task Queue (Minion.pm)
-
-### Job Type Definitions
-
-| Job Name | Purpose | Priority | Retry |
-|----------|---------|----------|-------|
-| `thumbnail_task` | Single thumbnail generation | 0 | 3 |
-| `page_thumbnails` | Batch page thumbnails | 0 | 3 |
-| `regen_all_thumbnails` | Full library thumbnail rebuild | - | - |
-| `find_duplicates` | Find duplicate archives | - | - |
-| `build_stat_hashes` | Build statistics index | 3 | - |
-| `handle_upload` | Process uploaded file | - | - |
-| `download_url` | Download external URL | - | - |
-| `run_plugin` | Execute plugin | - | - |
-
-### Parallel Processing (MCE::Loop)
-
-```perl
-# Unix: multi-process parallel
-if ( IS_UNIX ) {
-    mce_loop {
-        $sub->(@{ $_ });
-    } \@keys;
-    MCE::Loop->finish;
-} else {
-    # Windows: serial execution (libarchive doesn't support threads)
-    $sub->(@keys);
-}
-```
-
-### Job Progress Tracking
-
-```perl
-# Use Minion's note feature for progress tracking
-$job->note( $i => "processed", total_pages => $pages );
-```
-
-### Duplicate Detection Algorithm
-
-Using **Hamming distance** to compare thumbnail hashes:
-
-```perl
-for ( my $i = 0; $i < length( $thumbhashes{$node} ); $i++ ) {
-    $distance++ if substr( $hash1, $i, 1 ) ne substr( $hash2, $i, 1 );
-    last if $distance > $threshold;  # Early termination optimization
-}
-```
-
----
-
-## 🖼️ Image Resizing (Resizer.pm)
-
-### Factory Pattern
-
-```perl
-sub get_resizer() {
-    state $resizer = resizer_factory();  # Singleton
-    return $resizer;
-}
-
-sub resizer_factory {
-    if (LANraragi::Utils::Vips::is_vips_loaded) {
-        return LANraragi::Utils::VipsResizer->new;
-    }
-    return LANraragi::Utils::ImageMagickResizer->new;
-}
-```
-
-### Interface Definition
-
-| Method | Parameters | Purpose |
-|--------|------------|---------|
-| `resize_thumbnail` | `$data, $quality, $use_hq, $format` | Generate thumbnail |
-| `resize_image` | `$data, $quality, $threshold` | Reader image resize |
-
----
-
-## 🏷️ Tags.pm - Tag Processing Utilities
-
-### Core Features
-
-Tag rule system supporting multiple rule types:
-
-| Rule Type | Syntax | Example | Description |
-|-----------|--------|---------|-------------|
-| `remove` | `-tag` or `tag` | `-yaoi` | Remove specified tag |
-| `remove_ns` | `-namespace:*` | `-misc:*` | Remove entire namespace |
-| `strip_ns` | `~namespace` | `~language` | Keep tag but strip namespace |
-| `replace` | `old -> new` | `serie:* -> parody:*` | Replace tag |
-| `replace_ns` | `ns1:* -> ns2:*` | `category:* -> genre:*` | Replace namespace |
-| `hash_replace` | `old => new` | `foobar => correct_tag` | High-performance hash replace (runs last) |
-
-### Tag Rules Syntax
-
-```
-# Blacklist
--already uploaded
--forbidden content
-ongoing
-
-# Namespace removal
--misc:*
-
-# Namespace replacement
-serie:* -> parody:*
-
-# Namespace stripping (keep value only)
-~language
-
-# Case-insensitive match, preserves replacement case
-serie:one piece -> parody:One Piece
-
-# Hash replace (faster, runs after all other rules)
-various => various artists
-```
-
-**Example transformation:**
-```
-Input:  already uploaded, misc:ongoing, language:english, serie:one piece, various
-Output: english, parody:One Piece, various artists
-```
-
-### Key Functions
-
-```perl
-# Rule parsing
-@rules = tags_rules_to_array($text_rules);
-
-# Tag rewriting
-@new_tags = rewrite_tags(\@tags, \@rules, \%hash_replace);
-
-# Tag split/join
-@tags = split_tags_to_array("tag1, tag2, tag3");
-$str = join_tags_to_string(@tags);
-```
-
----
-
-## 🔧 Generic.pm - General Utility Functions
-
-### Main Function Categories
-
-| Function | Purpose |
-|----------|---------|
-| `is_image($file)` | Check if file is image (png/jpg/jpeg/jfif/gif/bmp/webp/avif/heif/heic/jxl) |
-| `is_archive($file)` | Check if file is archive (zip/rar/7z/tar/tar.gz/lzma/xz/cbz/cbr/cb7/cbt/pdf/epub/tar.zst/zst) |
-| `render_api_response($mojo, $op, $err, $msg)` | Standard API JSON response |
-| `get_tag_with_namespace($ns, $tags, $default)` | Extract value from tag string by namespace |
-| `shasum_str($data, $algo)` | Calculate SHA hash (for E-H reverse search) |
-
-### Process Management
-
-```perl
-# Start Shinobu (file watcher process)
-sub start_shinobu {
-    my $proc = Proc::Simple->new();
-    $proc->start($^X, "./lib/Shinobu.pm");
-    store \$proc, get_temp() . "/shinobu.pid";
-}
-
-# Start Minion Worker
-sub start_minion {
-    my $worker = $mojo->app->minion->worker;
-    $worker->status->{jobs} = Sys::CpuAffinity::getNumCpus();
-    $proc->start(sub { $worker->run });
-}
-```
-
-### Array/Set Utilities
-
-```perl
-# Intersection or difference
-@result = intersect_arrays(\@arr1, \@arr2, $is_neg);
-
-# Split workload by CPU count
-@sections = split_workload_by_cpu($numCpus, @workload);
-
-# Flatten nested array
-@flat = flat(@nested);
-```
-
-### Redis Lock Mechanism
-
-```perl
-sub exec_with_lock {
-    my ($mojo, $redis, $lock_name, $operation, $resource_id, $func) = @_;
-    my $lock = $redis->set($lock_name, 1, 'NX', 'EX', 10);  # 10s expiry
-    if (!$lock) {
-        $mojo->render(json => { error => "Locked resource" }, status => 423);
-        return 0;
-    }
-    eval { $func->() };
-    $redis->del($lock_name);
-    return 1;
-}
-```
-
----
-
-## ✅ Summary
-
-| Component | Perl Dependency | Purpose |
-|-----------|-----------------|---------|
-| Archive | Archive::Libarchive | ZIP/RAR/7z extraction |
-| PDF | GhostScript CLI | PDF to image conversion |
-| Image | libvips / ImageMagick | Image resizing |
-| Task Queue | Minion (Redis) | Background job processing |
-| Parallel | MCE::Loop | Multi-process parallelism |
+# Utility Modules Tour: `lib/LANraragi/Utils/`
+
+> Baseline commit `2094cc1d` (2026-09-04). Facts verified against code — cite-checked at generation time.
+
+## Overview
+
+Everything under `lib/LANraragi/Utils/` is stateless glue that Models and Controllers lean on. The
+modules, one line each:
+
+| Module | Responsibility |
+|--------|----------------|
+| `Archive.pm` | Reading archives (zip/cbz via libarchive, PDF via VIPS, CBW via HTTP), extracting pages, generating thumbnails |
+| `Database.pm` | Archive records in Redis: ID computation, tag/title/summary writes, JSON serialization, index upkeep |
+| `Generic.pm` | Grab-bag: image/archive detection, Redis-backed locks, Minion/Shinobu process startup, CSS theme listing |
+| `I18N.pm` | `Locale::Maketext` subclass loading gettext `.po` files from `locales/template/` |
+| `I18NInitializer.pm` | Installs the `lh` Mojolicious helper; resolves forced language or `Accept-Language` |
+| `ImageMagickResizer.pm` | Fallback resizer implementation on `Image::Magick` |
+| `Logging.pm` | Logger construction (`get_logger`), plugin loggers, log file reading |
+| `Login.pm` | `is_logged_in_api()` — API key / session checks |
+| `Metrics.pm` | Prometheus text exposition: route normalization plus `/proc` counters |
+| `Minion.pm` | Registers all background job tasks on the Minion instance |
+| `OpenAPI.pm` | `apply_openapi_mojo_overrides()` to relax OpenAPI request validation |
+| `PageCache.pm` | CHI-based page cache (FastMmap on Unix, Memory on Windows) |
+| `Path.pm` | Filesystem helpers: path creation/opening, archive path lookup, package<->path conversion |
+| `Plugins.pm` | Plugin registry glue: listing, loading, parameters, registration in Redis |
+| `Redis.pm` | `redis_encode()`/`redis_decode()` UTF-8 boundary helpers |
+| `Registry.pm` | Fetching/validating plugin-registry resources (git raw URLs, CDN artifacts, index schema) |
+| `Resizer.pm` | `get_resizer()` factory: libvips when available, ImageMagick otherwise |
+| `RotatingLog.pm` | `Mojo::Log` subclass with size-based rotation and `flock` locking |
+| `Routing.pm` | `apply_routes()` — the entire route table, CORS/auth bridges, OpenAPI setup |
+| `String.pm` | Title cleanup, trimming, URL trimming, similarity ranking |
+| `Tags.pm` | Tag rule parsing and application (`rewrite_tags`) |
+| `TempFolder.pm` | `get_temp()` — locates/creates the temporary folder |
+| `Vips.pm` | FFI bindings to libvips, including the PDF loader |
+| `VipsResizer.pm` | Preferred resizer implementation on libvips |
+
+## Archives, Images, and PDF
+
+`lib/LANraragi/Utils/Archive.pm` exports `is_file_in_archive`, `extract_file_from_archive`,
+`extract_single_file`, `extract_thumbnail`, `generate_thumbnail`, `get_filelist`, `is_cbw`,
+`parse_cbw_urls`, and `cbw_prefetch`. It relies on three distinct backends, chosen by file type:
+
+- **Archives (zip/cbz and friends)** go through `Archive::Libarchive` (both `ArchiveRead` and
+  `Peek` interfaces). `get_filelist()` iterates entries, skips non-images and AppleDouble/
+  AppleSingle junk (see the internal `is_apple_signature()`), applies a natural sort, then moves
+  cover pages to the front and credit pages to the back.
+- **PDFs are handled by VIPS, not GhostScript** — there is no `gs` invocation anywhere in the
+  codebase. `get_filelist()` counts pages via `lib/LANraragi/Utils/Vips.pm`'s
+  `vips_image_get_n_pages`, and `extract_single_file()` renders a page
+  with `pdfload_page_dpi($archive, $page - 1, 200)` before re-encoding it as JPEG with
+  `write_to_buffer()`.
+- **CBW (ComicBookWeb)** files are XML pointing at remote page images. `parse_cbw_urls()`
+  parses the XML (variable substitution plus `[format:a-b]` range expansion via internal
+  `expand_cbw_range()`), synthesizes zero-padded page names, and `extract_single_file()` proxies
+  the remote bytes through `fetch_cbw_image()`. `cbw_prefetch()` warms the next few pages into
+  `PageCache` after a page is served.
+
+The thumbnail pipeline: `extract_thumbnail()` extracts the requested page (storing the page
+bytes in PageCache for CBW covers), computes a SHA-1 `thumbhash` in Redis for cover images, and
+calls `generate_thumbnail()`, which produces a 500px-tall image at JPEG quality 50 (80 with
+`use_hq`, JPEG XL when `get_jxlthumbpages` is enabled). Non-cover thumbnails land under a
+two-character subfolder plus archive ID. The internal `extract_single_file_to_file()` (not
+exported) backs `extract_file_from_archive()`, the plugin-facing variant that unpacks into
+`/temp/plugin`.
+
+### The resizer pair
+
+`lib/LANraragi/Utils/Resizer.pm` exposes a single `get_resizer()` factory, memoized with
+`state`. It returns a `LANraragi::Utils::VipsResizer` when `Vips::is_vips_loaded()` is true,
+otherwise a `LANraragi::Utils::ImageMagickResizer`. Both implementations implement exactly two
+methods:
+
+- `resize_page($content, $quality, $format)` — downscales to 1064px width for reading.
+- `resize_thumbnail($content, $quality, $use_hq, $format)` — fits within 500x1000.
+
+`lib/LANraragi/Utils/Vips.pm` does not use a Perl binding module; it attaches the C library
+directly with `FFI::Platypus` (discovered via `FFI::CheckLib::find_lib(lib => ['vips',
+'vips-42'])`). `init()` calls `vips_cache_set_max(0)` to disable the operation cache, and if the
+library is missing, every attached function is replaced by a stub that dies. Beyond
+`vips_image_new_from_file` and friends, it offers `fit_resize`, `stretch_resize`,
+`cover_resize`, `resize_to_width`, `crop`, `grayscale`, `jpegsave`/`pngsave`,
+`write_to_buffer`, and `unref_image` (the `g_object_unref` wrapper you must call to free
+VipsImage handles).
+
+`ImageMagickResizer` lazily `require`s `Image::Magick` inside a `try`, sets the
+`jpeg:size` decoder hint to avoid decoding full-resolution frames, and picks `Sample` (fast) or
+`Scale` (HQ) for thumbnails. If PerlMagick is unavailable it simply returns undef and the caller
+logs that no thumbnail could be created.
+
+## Minion Tasks
+
+`lib/LANraragi/Utils/Minion.pm` registers twelve tasks in `add_tasks()`:
+
+| Task | Purpose |
+|------|---------|
+| `thumbnail_task` | Thumbnail for one archive page (page 0 = cover) |
+| `tank_thumbnail_task` | Thumbnail for a tankoubon, from its first archive |
+| `page_thumbnails` | All page thumbnails for one archive; parallelized with `MCE::Loop` on Unix |
+| `regen_all_thumbnails` | Full-library thumbnail regeneration, including tankoubons |
+| `find_duplicates` | Groups archives by Hamming distance between `thumbhash` values into `LRR_DUPLICATE_GROUPS` |
+| `build_stat_hashes` | Delegates to `LANraragi::Model::Stats::build_stat_hashes` |
+| `handle_upload` | Ingests an uploaded file via `LANraragi::Model::Upload::handle_incoming_file` |
+| `download_url` | Downloads a URL (through a downloader plugin if one matches) and ingests it |
+| `run_plugin` | Executes a plugin by namespace via `use_plugin()` |
+| `install_plugin` | Installs a managed plugin under a `plugin-write:` lock (TTL 300s) |
+| `backup_json` | Writes a backup JSON to the temp folder via `LANraragi::Model::Backup::build_backup_JSON` |
+| `restore_backup` | Restores from backup JSON via `restore_from_JSON` |
+
+Note the Windows asymmetry: `MCE::Loop` parallelism is Unix-only (libarchive threading), so the
+thumbnail and duplicate jobs fall back to sequential execution there.
+
+## Concurrency and Locking
+
+`lib/LANraragi/Utils/Generic.pm` provides two locking entry points over Redis `SET NX EX`:
+
+- `exec_with_lock($mojo, $lock_name, $operation, $resource_id, $func)` — the controller-facing
+  five-argument variant. On contention it renders a 423 JSON response naming the locked
+  resource and returns false.
+- `exec_with_lock_pure(\@lock_names, $func, $redis?, $ttl?)` — the primitive. It acquires
+  multiple locks (default TTL 10s), and each lock value is a random SHA-256 token released by a
+  Lua script that compares the token before deleting — the standard single-instance distributed
+  lock pattern, preventing workers from deleting locks they do not own. Failed multi-lock
+  acquisitions roll back in reverse order.
+
+The same module also owns process lifecycle: `start_minion()` sizes the worker's parallel job
+count with `MCE::Util::get_ncpu()` and launches it in a `Proc::Simple` subprocess (PID recorded
+in `minion.pid`), while `start_shinobu()` does the same for the file watcher. `split_workload_by_cpu()`
+chunks work for the MCE loops used by the Minion tasks above.
+
+## Tag Rules
+
+`lib/LANraragi/Utils/Tags.pm` parses user-written rules with `tags_rules_to_array()` and applies
+them with `rewrite_tags()`. Six rule types exist:
+
+| Syntax | Type | Effect |
+|--------|------|--------|
+| `-tag` | `remove` | Drop the exact tag |
+| `-namespace:*` | `remove_ns` | Drop every tag in the namespace |
+| `~namespace` | `strip_ns` | Remove the namespace prefix, keep the value |
+| `match -> replacement` | `replace` | Rewrite the exact tag |
+| `ns:* -> other:*` | `replace_ns` | Rename the namespace |
+| `match => replacement` | `hash_replace` | O(1) exact-match rewrite via lookup hash |
+
+All matches are lowercased at parse time. `hash_replace` rules are split out by
+`build_tag_replace_hash()` into a case-insensitive hash that `apply_rules()` consults *after*
+the sequential rules have run, so they act as the final word on a tag's value.
+
+## Routing, Login, and Web Concerns
+
+`lib/LANraragi/Utils/Routing.pm`'s `apply_routes()` is the single route table: it wires
+`Mojolicious::Plugin::OpenAPI` against `tools/openapi.yaml` with an `api_key` security scheme
+delegating to `is_logged_in_api()`, optionally bridges CORS (`login#setup_cors`) and the
+"no-fun-allowed" enforced-auth mode, serves versioned `/js/:version/*` assets with an immutable
+cache header (guarded by `is_path_within()` against path traversal), and declares the
+public/login/ logged-in route hierarchies.
+
+`lib/LANraragi/Utils/Login.pm`'s `is_logged_in_api()` accepts any of: a `Bearer` + base64 API
+key `Authorization` header, a `key` request parameter (used by OPDS), an authenticated session,
+or simply having password enforcement disabled. `lib/LANraragi/Utils/OpenAPI.pm`'s
+`apply_openapi_mojo_overrides()` loosens OpenAPI validation where the stock behavior is too
+strict.
+
+Localization lives in `I18N.pm`/`I18NInitializer.pm`: `Locale::Maketext` with gettext lexicons,
+exposed to templates as the `lh` helper, honoring a forced language setting before falling back
+to `Accept-Language` negotiation. Observability is split between `Logging.pm`/`RotatingLog.pm`
+(loggers, plugin loggers, rotation with `flock`) and `Metrics.pm` (Prometheus counters:
+`extract_endpoint()` normalizes request paths to route templates to limit label cardinality,
+and `read_proc_stat`/`read_proc_statm`/`read_proc_io_bytes` etc. feed process metrics).
+
+## Everything Else
+
+- **Data layer.** `Database.pm` covers archive CRUD (`add_archive_to_redis`, `set_tags`,
+  `set_title`, `set_summary`, `get_archive_json_multi`, `compute_id`, `invalidate_cache`,
+  `get_computed_tagrules`, `update_indexes`, `clean_database`). `Redis.pm` is just the
+  encode/decode pair with Unicode NFC normalization. `PageCache.pm` wraps CHI — FastMmap driver
+  on Unix, Memory on Windows — capped at `min(tempmaxsize, 4096)` MB.
+- **Filesystem.** `Path.pm` (`create_path`, `open_path_or_die`, `get_archive_path`,
+  `package_to_path`/`path_to_package`, `compat_path`) and `TempFolder.pm` (`get_temp`).
+  `String.pm` holds `clean_title`, `trim`, `trim_url`, and `most_similar` (backed by
+  `String::Similarity`).
+- **Plugin support.** `Plugins.pm` and `Registry.pm` are covered in
+  [04_plugins.md](04_plugins.md); the former is the Redis-backed lookup layer, the latter the
+  registry fetch/validation layer used by managed plugin installation.

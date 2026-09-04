@@ -1,113 +1,50 @@
-# LANraragi Technical Documentation
+# LANraragi Developer Documentation
 
-> **Developer-Oriented Technical Documentation Hub**
+> Developer-oriented technical docs for this fork, generated from the actual codebase.
+> Baseline commit `2094cc1d` (2026-09-04). 中文版见 [zh-CN/](zh-CN/)。
 
-Welcome to the LANraragi internal technical documentation! This document serves as the **navigation center** for all developer-focused documentation, helping you quickly understand the project architecture, find specific implementation details, and contribute effectively.
+The complete, always-current user manual lives in [`tools/Documentation/`](../tools/Documentation/) (GitBook),
+and the authoritative API specification is [`tools/openapi.yaml`](../tools/openapi.yaml) (lint via `npm run lint-openapi`).
+The documents below are a code-level companion for developers.
 
-**We warmly welcome contributions!** Whether you're fixing a bug, adding a feature, improving documentation, or translating — every contribution makes LANraragi better. Check out [CONTRIBUTING.md](../CONTRIBUTING.md) to get started.
+## Topics
 
----
+| # | Topic | EN | 中文 |
+|---|-------|----|------|
+| 01 | Data layer — 5 Redis databases, keys and fields | [en](en/01_data_layer.md) | [zh-CN](zh-CN/01_data_layer.md) |
+| 02 | HTTP API — 87 operations, 64 paths, 12 tags | [en](en/02_api.md) | [zh-CN](zh-CN/02_api.md) |
+| 03 | Utils — 24 modules (archives, VIPS, Minion, locks) | [en](en/03_utils.md) | [zh-CN](zh-CN/03_utils.md) |
+| 04 | Plugin system — 4 types, 32 built-in plugins | [en](en/04_plugins.md) | [zh-CN](zh-CN/04_plugins.md) |
+| 05 | Frontend — ES modules under `public/js/mod/` | [en](en/05_frontend.md) | [zh-CN](zh-CN/05_frontend.md) |
+| 06 | Models — all 16 `LANraragi::Model` modules | [en](en/06_models.md) | [zh-CN](zh-CN/06_models.md) |
+| 07 | Internationalization | [en](en/07_i18n.md) | [zh-CN](zh-CN/07_i18n.md) |
+| 08 | Build, CI, tests, Docker | [en](en/08_build.md) | [zh-CN](zh-CN/08_build.md) |
 
-## � Bilingual Documentation Structure
+Supporting files (auto-generated, do not edit by hand):
 
-All technical documentation is available in both **English** and **Chinese (简体中文)**. Choose your preferred language:
+- [project_tree.md](project_tree.md) — full tree of tracked files
+- [en/file_list.md](en/file_list.md) / [zh-CN/file_list.md](zh-CN/file_list.md) — files grouped by area with live counts
 
-| # | Topic | EN | CN | Description |
-|:-:|-------|:--:|:--:|-------------|
-| 01 | **Data Layer** | [EN](./en/01_data_layer.md) | [中文](./zh-CN/01_data_layer.md) | Redis multi-database architecture, complete schema for Archive, Category, Tankoubon, and Config entities |
-| 02 | **API Layer** | [EN](./en/02_api.md) | [中文](./zh-CN/02_api.md) | RESTful API routing, 60+ endpoints, authentication modes, search engine internals |
-| 03 | **Utilities** | [EN](./en/03_utils.md) | [中文](./zh-CN/03_utils.md) | Archive extraction, Minion task queue, image resizing, tag processing rules |
-| 04 | **Plugin System** | [EN](./en/04_plugins.md) | [中文](./zh-CN/04_plugins.md) | Plugin types (metadata/login/download/script), execution flow, configuration storage |
-| 05 | **Frontend** | [EN](./en/05_frontend.md) | [中文](./zh-CN/05_frontend.md) | JavaScript modules, DataTables integration, Reader component, localStorage usage |
-| 06 | **Models** | [EN](./en/06_models.md) | [中文](./zh-CN/06_models.md) | Business logic layer: Search engine, Upload processing, Backup/Restore, OPDS support |
-| 07 | **I18N & Templates** | [EN](./en/07_i18n.md) | [中文](./zh-CN/07_i18n.md) | Template Toolkit syntax, Locale::Maketext integration, 14 supported languages |
-| 08 | **Build & Test** | [EN](./en/08_build.md) | [中文](./zh-CN/08_build.md) | Test architecture, Docker build, CI/CD workflows, configuration files |
+## Regeneration
 
-### 📦 Supporting Documents
+File listings and statistics are machine-derived and never hand-written:
 
-| Document | EN | CN | Description |
-|----------|:--:|:--:|-------------|
-| File List | [EN](./en/file_list.md) | [中文](./zh-CN/file_list.md) | Complete categorized list of all project files (112 Perl, 21 JS, 40 templates, etc.) |
-
----
-
-## 🏗️ System Architecture
-
-The following diagram illustrates how LANraragi's core components interact:
-
-```mermaid
-graph TB
-    subgraph Client["👤 Client"]
-        Browser[Web Browser]
-    end
-
-    subgraph Server["🖥️ LANraragi Server"]
-        Frontend[Frontend<br/>JS + Templates]
-        API[Mojolicious API<br/>Controllers]
-        Models[Model Layer<br/>Business Logic]
-        Plugins[Plugin System<br/>32 Plugins]
-    end
-
-    subgraph Storage["💾 Storage"]
-        Redis[(Redis<br/>4 Databases)]
-        FS[File System<br/>Archives + Thumbnails]
-    end
-
-    Browser <-->|HTTP/WebSocket| Frontend
-    Frontend <-->|REST API| API
-    API <--> Models
-    Models <--> Plugins
-    Models <-->|Metadata & Index| Redis
-    Models <-->|Files| FS
+```bash
+python3 docs/generate_docs.py   # or: npm run docs
+python3 docs/generate_docs.py --check   # CI-style staleness check
 ```
 
-### 🔄 Request Processing Flow
+Narrative documents are hand-verified against code at the baseline commit named in
+each file's header; after significant code changes they need a manual review pass.
 
-1. **Client Request** → The browser sends an HTTP request (e.g., `/api/search?filter=artist:name`) to the Mojolicious-based API layer.
-2. **Routing & Auth** → The request passes through CORS middleware and authentication checks (session/API key), then routes to the appropriate Controller.
-3. **Business Logic** → Controllers delegate to Model modules (e.g., `Model::Search`), which query Redis indexes (`LRR_TITLES`, `INDEX_{tag}`) and apply caching via `LRR_SEARCHCACHE`.
-4. **Plugin Execution** → For metadata fetching, the Plugin System invokes the appropriate plugin (with rate limiting and login cookie support), processes results through tag rules, and updates Redis.
-5. **Response** → Results are rendered as JSON (API) or HTML (via Template Toolkit with I18N support) and returned to the client.
+## Codebase snapshot (at baseline)
 
----
-
-## 📚 Reading Guide
-
-We recommend the following learning path for new contributors:
-
-### 🚀 Getting Started (Essential)
-1. **[01_data_layer.md](./en/01_data_layer.md)** — Start here! Understanding the Redis schema is fundamental to everything else.
-2. **[02_api.md](./en/02_api.md)** — Learn the API structure and authentication flow.
-
-### 🔧 Deep Dive (Based on Your Focus)
-3. **[06_models.md](./en/06_models.md)** — Core business logic: Search, Upload, Backup, OPDS.
-4. **[04_plugins.md](./en/04_plugins.md)** — If you're writing or modifying plugins.
-5. **[05_frontend.md](./en/05_frontend.md)** — For UI/UX work and JavaScript development.
-
-### 🌐 Infrastructure & Deployment
-6. **[03_utils.md](./en/03_utils.md)** — Archive handling, task queue, image processing utilities.
-7. **[07_i18n.md](./en/07_i18n.md)** — Template system and internationalization.
-8. **[08_build.md](./en/08_build.md)** — Testing, Docker, CI/CD, and deployment.
-
----
-
-## 🛠️ Tools
-
-| Tool | Purpose |
-|------|---------|
-| **[ProjectTreeGenerator.py](./ProjectTreeGenerator.py)** | Python script to generate a complete project directory tree in Markdown format |
-| **[file_list.md](./en/file_list.md)** | Pre-generated categorized file listing with statistics |
-
----
-
-## 🔗 Quick Links
-
-- **Main Project**: [LANraragi GitHub](https://github.com/Difegue/LANraragi)
-- **Official Docs**: [tools/Documentation/](../tools/Documentation/)
-- **API Spec (OpenAPI)**: [tools/openapi.yaml](../tools/openapi.yaml)
-- **Contributing Guide**: [CONTRIBUTING.md](../CONTRIBUTING.md)
-- **Translations (Weblate)**: [hosted.weblate.org](https://hosted.weblate.org/projects/lanraragi/)
-
----
-
-*Last Updated: 2026-01-12*
+| Metric | Value |
+|--------|-------|
+| Tracked files | 481 |
+| Perl modules / scripts+tests | 101 / 45 |
+| Model / Utils modules | 16 / 24 |
+| Built-in plugins (login/metadata/download/script) | 4 / 21 / 3 / 4 |
+| Core frontend ES modules (`public/js/mod/`) | 9 |
+| API operations / paths / tags (openapi.yaml) | 87 / 64 / 12 |
+| Loadable UI languages | 12 |

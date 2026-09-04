@@ -1,643 +1,560 @@
-# LANraragi 项目文件分类
+# LANraragi Project File List
 
-> 生成时间: 2026-01-11
+> Auto-generated from `git ls-files` — do not edit by hand. Baseline commit `2094cc1d`, 2026-09-04.
 
-本文档按类型分类列出项目中的所有文件。
+## File Statistics
 
----
-
-## 📊 文件统计
-
-| 类型 | 数量 |
+| Type | Count |
 |------|------|
-| Perl 代码文件 (.pm, .pl, .t) | 112 |
-| JavaScript 文件 (.js) | 21 |
-| 模板/HTML/CSS 文件 | 40 |
-| 配置文件 (.json, .yaml, .conf, .xml) | 38 |
-| 图片文件 | 14 |
-| 文档文件 (.md, .txt) | 57 |
-| 脚本文件 (.sh, .ps1) | 8 |
-| 本地化文件 (.po) | 14 |
+| Perl modules (.pm) | 101 |
+| Perl scripts/tests (.pl, .t) | 45 |
+| JavaScript (.js) | 25 |
+| Templates (.tt2, .ep) | 26 |
+| Translations (.po) | 14 |
+| Styles (.css) | 7 |
+| Docs (.md) | 70 |
+| Shell/PowerShell (.sh, .ps1) | 9 |
+| Other | 184 |
 
----
+**Total tracked files: 481**
 
-## 🔷 Perl 代码文件 (112 个)
+## Files by Area
 
-### 核心模块
-```
-lib/
-├── LANraragi.pm
-├── Shinobu.pm
-├── Worker.pm
-```
+### Server entry & config (3)
 
-### Controller 层 (API)
-```
-lib/LANraragi/Controller/Api/
-├── Archive.pm
-├── Category.pm
-├── Database.pm
-├── Minion.pm
-├── Other.pm
-├── Search.pm
-├── Shinobu.pm
-└── Tankoubon.pm
-```
+- `lib/LANraragi.pm`
+- `lib/Shinobu.pm`
+- `lrr.conf`
 
-### Controller 层 (页面)
-```
-lib/LANraragi/Controller/
-├── Backup.pm
-├── Batch.pm
-├── Category.pm
-├── Config.pm
-├── Duplicates.pm
-├── Edit.pm
-├── I18N.pm
-├── Index.pm
-├── Logging.pm
-├── Login.pm
-├── Plugins.pm
-├── Reader.pm
-├── Stats.pm
-├── Tankoubon.pm
-└── Upload.pm
-```
+### lib/LANraragi/Controller (pages) (26)
 
-### Model 层
-```
-lib/LANraragi/Model/
-├── Archive.pm
-├── Backup.pm
-├── Category.pm
-├── Config.pm
-├── Opds.pm
-├── Plugins.pm
-├── Reader.pm
-├── Search.pm
-├── Setup.pm
-├── Stats.pm
-├── Tankoubon.pm
-└── Upload.pm
-```
+- `lib/LANraragi/Controller/Api/Archive.pm`
+- `lib/LANraragi/Controller/Api/Category.pm`
+- `lib/LANraragi/Controller/Api/Database.pm`
+- `lib/LANraragi/Controller/Api/Metrics.pm`
+- `lib/LANraragi/Controller/Api/Minion.pm`
+- `lib/LANraragi/Controller/Api/Other.pm`
+- `lib/LANraragi/Controller/Api/Plugins.pm`
+- `lib/LANraragi/Controller/Api/Registry.pm`
+- `lib/LANraragi/Controller/Api/Search.pm`
+- `lib/LANraragi/Controller/Api/Shinobu.pm`
+- `lib/LANraragi/Controller/Api/Stamp.pm`
+- `lib/LANraragi/Controller/Api/Tankoubon.pm`
+- `lib/LANraragi/Controller/Backup.pm`
+- `lib/LANraragi/Controller/Batch.pm`
+- `lib/LANraragi/Controller/Category.pm`
+- `lib/LANraragi/Controller/Config.pm`
+- `lib/LANraragi/Controller/Duplicates.pm`
+- `lib/LANraragi/Controller/Edit.pm`
+- `lib/LANraragi/Controller/I18N.pm`
+- `lib/LANraragi/Controller/Index.pm`
+- `lib/LANraragi/Controller/Logging.pm`
+- `lib/LANraragi/Controller/Login.pm`
+- `lib/LANraragi/Controller/Plugins.pm`
+- `lib/LANraragi/Controller/Reader.pm`
+- `lib/LANraragi/Controller/Stats.pm`
+- `lib/LANraragi/Controller/Upload.pm`
 
-### 插件 - 下载
-```
-lib/LANraragi/Plugin/Download/
-├── Chaika.pm
-├── EHentai.pm
-└── Pixiv.pm
-```
+### lib/LANraragi/Model (16)
 
-### 插件 - 登录
-```
-lib/LANraragi/Plugin/Login/
-├── EHentai.pm
-├── Fakku.pm
-├── Pixiv.pm
-└── nHentai.pm
-```
+- `lib/LANraragi/Model/Archive.pm`
+- `lib/LANraragi/Model/Backup.pm`
+- `lib/LANraragi/Model/Category.pm`
+- `lib/LANraragi/Model/Config.pm`
+- `lib/LANraragi/Model/Metrics.pm`
+- `lib/LANraragi/Model/Opds.pm`
+- `lib/LANraragi/Model/Plugins.pm`
+- `lib/LANraragi/Model/Reader.pm`
+- `lib/LANraragi/Model/Registry.pm`
+- `lib/LANraragi/Model/Search.pm`
+- `lib/LANraragi/Model/Server.pm`
+- `lib/LANraragi/Model/Setup.pm`
+- `lib/LANraragi/Model/Stamp.pm`
+- `lib/LANraragi/Model/Stats.pm`
+- `lib/LANraragi/Model/Tankoubon.pm`
+- `lib/LANraragi/Model/Upload.pm`
 
-### 插件 - 元数据
-```
-lib/LANraragi/Plugin/Metadata/
-├── Chaika.pm
-├── ChaikaFile.pm
-├── ComicInfo.pm
-├── CopyArchiveTags.pm
-├── CopyTags.pm
-├── DateAdded.pm
-├── EHDLInfo.pm
-├── EHentai.pm
-├── Eze.pm
-├── Fakku.pm
-├── GalleryDL.pm
-├── HDoujin.pm
-├── HatH.pm
-├── Hentag.pm
-├── HentagOnline.pm
-├── Hitomi.pm
-├── Koromo.pm
-├── Ksk.pm
-├── MEMS.pm
-├── Pixiv.pm
-├── RegexParse.pm
-└── nHentai.pm
-```
+### lib/LANraragi/Utils (24)
 
-### 插件 - 脚本
-```
-lib/LANraragi/Plugin/Scripts/
-├── FolderToCat.pm
-├── SourceFinder.pm
-└── nHentaiSourceConverter.pm
-```
+- `lib/LANraragi/Utils/Archive.pm`
+- `lib/LANraragi/Utils/Database.pm`
+- `lib/LANraragi/Utils/Generic.pm`
+- `lib/LANraragi/Utils/I18N.pm`
+- `lib/LANraragi/Utils/I18NInitializer.pm`
+- `lib/LANraragi/Utils/ImageMagickResizer.pm`
+- `lib/LANraragi/Utils/Logging.pm`
+- `lib/LANraragi/Utils/Login.pm`
+- `lib/LANraragi/Utils/Metrics.pm`
+- `lib/LANraragi/Utils/Minion.pm`
+- `lib/LANraragi/Utils/OpenAPI.pm`
+- `lib/LANraragi/Utils/PageCache.pm`
+- `lib/LANraragi/Utils/Path.pm`
+- `lib/LANraragi/Utils/Plugins.pm`
+- `lib/LANraragi/Utils/Redis.pm`
+- `lib/LANraragi/Utils/Registry.pm`
+- `lib/LANraragi/Utils/Resizer.pm`
+- `lib/LANraragi/Utils/RotatingLog.pm`
+- `lib/LANraragi/Utils/Routing.pm`
+- `lib/LANraragi/Utils/String.pm`
+- `lib/LANraragi/Utils/Tags.pm`
+- `lib/LANraragi/Utils/TempFolder.pm`
+- `lib/LANraragi/Utils/Vips.pm`
+- `lib/LANraragi/Utils/VipsResizer.pm`
 
-### 工具类
-```
-lib/LANraragi/Utils/
-├── Archive.pm
-├── Database.pm
-├── Generic.pm
-├── I18N.pm
-├── I18NInitializer.pm
-├── ImageMagickResizer.pm
-├── Logging.pm
-├── Minion.pm
-├── PageCache.pm
-├── Path.pm
-├── Plugins.pm
-├── Redis.pm
-├── Resizer.pm
-├── RotatingLog.pm
-├── Routing.pm
-├── String.pm
-├── Tags.pm
-├── TempFolder.pm
-├── Vips.pm
-└── VipsResizer.pm
-```
+### lib/LANraragi/Plugin/Login (4)
 
-### 测试文件 (.t)
-```
-tests/
-├── backup.t
-├── mocks.pl
-├── modules.t
-├── opds.t
-├── plugins.t
-├── search.t
-├── tankoubon.t
-├── LANraragi/Model/
-│   └── Plugins.t
-├── LANraragi/Plugin/Metadata/
-│   ├── Chaika.t
-│   ├── ChaikaFile.t
-│   ├── ComicInfo.t
-│   ├── CopyArchiveTags.t
-│   ├── EHDLInfo.t
-│   ├── EHentai.t
-│   ├── Eze.t
-│   ├── Fakku.t
-│   ├── GalleryDL.t
-│   ├── Generic.t
-│   ├── HatH.t
-│   ├── Hentag.t
-│   ├── HentagOnline.t
-│   ├── Hitomi.t
-│   ├── Koromo.t
-│   ├── Ksk.t
-│   ├── Pixiv.t
-│   ├── RegexParse.t
-│   └── nHentai.t
-└── LANraragi/Utils/
-    ├── Archive.t
-    ├── Generic.t
-    ├── ImageMagickResizer.t
-    ├── Logging.t
-    ├── String.t
-    ├── Tags.t
-    ├── Vips.t
-    └── VipsResizer.t
-```
+- `lib/LANraragi/Plugin/Login/EHentai.pm`
+- `lib/LANraragi/Plugin/Login/Fakku.pm`
+- `lib/LANraragi/Plugin/Login/Pixiv.pm`
+- `lib/LANraragi/Plugin/Login/nHentai.pm`
 
-### 启动脚本
-```
-script/
-├── backup
-├── get_version
-├── lanraragi
-└── launcher.pl
-```
+### lib/LANraragi/Plugin/Metadata (21)
 
----
+- `lib/LANraragi/Plugin/Metadata/Chaika.pm`
+- `lib/LANraragi/Plugin/Metadata/ChaikaFile.pm`
+- `lib/LANraragi/Plugin/Metadata/ComicInfo.pm`
+- `lib/LANraragi/Plugin/Metadata/CopyArchiveTags.pm`
+- `lib/LANraragi/Plugin/Metadata/CopyTags.pm`
+- `lib/LANraragi/Plugin/Metadata/DateAdded.pm`
+- `lib/LANraragi/Plugin/Metadata/EHDLInfo.pm`
+- `lib/LANraragi/Plugin/Metadata/EHentai.pm`
+- `lib/LANraragi/Plugin/Metadata/Eze.pm`
+- `lib/LANraragi/Plugin/Metadata/Fakku.pm`
+- `lib/LANraragi/Plugin/Metadata/GalleryDL.pm`
+- `lib/LANraragi/Plugin/Metadata/HDoujin.pm`
+- `lib/LANraragi/Plugin/Metadata/HatH.pm`
+- `lib/LANraragi/Plugin/Metadata/Hentag.pm`
+- `lib/LANraragi/Plugin/Metadata/Hitomi.pm`
+- `lib/LANraragi/Plugin/Metadata/Koromo.pm`
+- `lib/LANraragi/Plugin/Metadata/Ksk.pm`
+- `lib/LANraragi/Plugin/Metadata/MEMS.pm`
+- `lib/LANraragi/Plugin/Metadata/Pixiv.pm`
+- `lib/LANraragi/Plugin/Metadata/RegexParse.pm`
+- `lib/LANraragi/Plugin/Metadata/nHentai.pm`
 
-## 🟡 JavaScript 文件 (21 个)
+### lib/LANraragi/Plugin/Download (3)
 
-### 前端功能模块
-```
-public/js/
-├── backup.js
-├── batch.js
-├── category.js
-├── common.js
-├── config.js
-├── duplicates.js
-├── edit.js
-├── index.js
-├── index_datatables.js
-├── logs.js
-├── plugins.js
-├── reader.js
-├── server.js
-├── stats.js
-└── upload.js
-```
+- `lib/LANraragi/Plugin/Download/Chaika.pm`
+- `lib/LANraragi/Plugin/Download/EHentai.pm`
+- `lib/LANraragi/Plugin/Download/Pixiv.pm`
 
-### 测试/工具
-```
-tests/samples/hitomi/
-└── 2261881.js
+### lib/LANraragi/Plugin/Scripts (4)
 
-tools/k6/
-├── covers_cold.js
-├── page_fetching.js
-├── single_archive_cold.js
-└── single_archive_warm.js
-```
+- `lib/LANraragi/Plugin/Scripts/EhTagAutoUpdater.pm`
+- `lib/LANraragi/Plugin/Scripts/FolderToCat.pm`
+- `lib/LANraragi/Plugin/Scripts/SourceFinder.pm`
+- `lib/LANraragi/Plugin/Scripts/nHentaiSourceConverter.pm`
 
-### 其他
-```
-docs/
-└── generate_tree.py
-```
+### public/js (page scripts) (21)
 
----
+- `public/js/.gitignore`
+- `public/js/backup.js`
+- `public/js/batch.js`
+- `public/js/category.js`
+- `public/js/config.js`
+- `public/js/duplicates.js`
+- `public/js/edit.js`
+- `public/js/logs.js`
+- `public/js/mod/common.js`
+- `public/js/mod/index.js`
+- `public/js/mod/index_contextmenu.js`
+- `public/js/mod/index_datatables.js`
+- `public/js/mod/reader_archive_overlay.js`
+- `public/js/mod/reader_common.js`
+- `public/js/mod/reader_options.js`
+- `public/js/mod/reader_stamps.js`
+- `public/js/mod/server.js`
+- `public/js/plugins.js`
+- `public/js/reader.js`
+- `public/js/stats.js`
+- `public/js/upload.js`
 
-## 🟢 模板/HTML/CSS 文件 (40 个)
+### public/themes (5)
 
-### CSS 样式
-```
-public/css/
-├── config.css
-└── lrr.css
+- `public/themes/ex.css`
+- `public/themes/g.css`
+- `public/themes/modern.css`
+- `public/themes/modern_clear.css`
+- `public/themes/modern_red.css`
 
-public/themes/
-├── ex.css
-├── g.css
-├── modern.css
-├── modern_clear.css
-└── modern_red.css
-```
+### templates (26)
 
-### 页面模板 (Template Toolkit)
-```
-templates/
-├── backup.html.tt2
-├── batch.html.tt2
-├── category.html.tt2
-├── config.html.tt2
-├── duplicates.html.tt2
-├── edit.html.tt2
-├── footer.html.tt2
-├── i18n.html.tt2
-├── index.html.tt2
-├── login.html.tt2
-├── logs.html.tt2
-├── opds.html.tt2
-├── opds_entry.html.tt2
-├── plugins.html.tt2
-├── reader.html.tt2
-├── stats.html.tt2
-├── upload.html.tt2
-└── templates_config/
-    ├── config_files.html.tt2
-    ├── config_global.html.tt2
-    ├── config_security.html.tt2
-    ├── config_shinobu.html.tt2
-    ├── config_tags.html.tt2
-    └── config_theme.html.tt2
-```
+- `templates/backup.html.tt2`
+- `templates/batch.html.tt2`
+- `templates/category.html.tt2`
+- `templates/common/importmap.html.tt2`
+- `templates/config.html.tt2`
+- `templates/duplicates.html.tt2`
+- `templates/edit.html.tt2`
+- `templates/exception.production.html.ep`
+- `templates/footer.html.tt2`
+- `templates/i18n.html.tt2`
+- `templates/index.html.tt2`
+- `templates/login.html.tt2`
+- `templates/logs.html.tt2`
+- `templates/not_found.production.html.ep`
+- `templates/opds.html.tt2`
+- `templates/opds_entry.html.tt2`
+- `templates/plugins.html.tt2`
+- `templates/reader.html.tt2`
+- `templates/stats.html.tt2`
+- `templates/templates_config/config_files.html.tt2`
+- `templates/templates_config/config_global.html.tt2`
+- `templates/templates_config/config_security.html.tt2`
+- `templates/templates_config/config_shinobu.html.tt2`
+- `templates/templates_config/config_tags.html.tt2`
+- `templates/templates_config/config_theme.html.tt2`
+- `templates/upload.html.tt2`
 
-### 错误页面 (Mojolicious EP)
-```
-templates/
-├── exception.production.html.ep
-└── not_found.production.html.ep
-```
+### locales/template (14)
 
-### 测试样本 HTML
-```
-tests/samples/
-├── eh/002_search_results.html
-├── fakku/001_search_response.html
-├── fakku/002_gallery_front.html
-├── nh/001_search_results.html
-├── nh/002_gid_52249.html
-└── pixiv/ssr/
-    ├── illust.html
-    ├── manga_1.html
-    └── manga_2.html
-```
+- `locales/template/as.po`
+- `locales/template/de.po`
+- `locales/template/en.po`
+- `locales/template/es.po`
+- `locales/template/fr.po`
+- `locales/template/id.po`
+- `locales/template/it.po`
+- `locales/template/ja.po`
+- `locales/template/ko.po`
+- `locales/template/nb_NO.po`
+- `locales/template/pt.po`
+- `locales/template/vi.po`
+- `locales/template/zh.po`
+- `locales/template/zh_Hant.po`
 
----
+### tests (96)
 
-## ⚙️ 配置文件 (38 个)
+- `tests/LANraragi/Model/Plugins.t`
+- `tests/LANraragi/Plugin/Metadata/Chaika.t`
+- `tests/LANraragi/Plugin/Metadata/ChaikaFile.t`
+- `tests/LANraragi/Plugin/Metadata/ComicInfo.t`
+- `tests/LANraragi/Plugin/Metadata/CopyArchiveTags.t`
+- `tests/LANraragi/Plugin/Metadata/EHDLInfo.t`
+- `tests/LANraragi/Plugin/Metadata/EHentai.t`
+- `tests/LANraragi/Plugin/Metadata/Eze.t`
+- `tests/LANraragi/Plugin/Metadata/Fakku.t`
+- `tests/LANraragi/Plugin/Metadata/GalleryDL.t`
+- `tests/LANraragi/Plugin/Metadata/Generic.t`
+- `tests/LANraragi/Plugin/Metadata/HatH.t`
+- `tests/LANraragi/Plugin/Metadata/Hentag.t`
+- `tests/LANraragi/Plugin/Metadata/Hitomi.t`
+- `tests/LANraragi/Plugin/Metadata/Koromo.t`
+- `tests/LANraragi/Plugin/Metadata/Ksk.t`
+- `tests/LANraragi/Plugin/Metadata/Pixiv.t`
+- `tests/LANraragi/Plugin/Metadata/RegexParse.t`
+- `tests/LANraragi/Plugin/Metadata/nHentai.t`
+- `tests/LANraragi/Utils/Archive.t`
+- `tests/LANraragi/Utils/Generic.t`
+- `tests/LANraragi/Utils/ImageMagickResizer.t`
+- `tests/LANraragi/Utils/Logging.t`
+- `tests/LANraragi/Utils/Metrics.t`
+- `tests/LANraragi/Utils/Path.t`
+- `tests/LANraragi/Utils/Registry.t`
+- `tests/LANraragi/Utils/Routing.t`
+- `tests/LANraragi/Utils/String.t`
+- `tests/LANraragi/Utils/Tags.t`
+- `tests/LANraragi/Utils/Vips.t`
+- `tests/LANraragi/Utils/VipsResizer.t`
+- `tests/backup.t`
+- `tests/category.t`
+- `tests/cbw.t`
+- `tests/mocks.pl`
+- `tests/modules.t`
+- `tests/opds.t`
+- `tests/plugins.t`
+- `tests/samples/chaika/001_gid_27240.json`
+- `tests/samples/chaika/002_sha1_response.json`
+- `tests/samples/comicinfo/00_sample.xml`
+- `tests/samples/comicinfo/01_sample.xml`
+- `tests/samples/comicinfo/02_sample.xml`
+- `tests/samples/comicinfo/03_sample.xml`
+- `tests/samples/doc.pdf`
+- `tests/samples/eh/001_gid-1866546.json`
+- `tests/samples/eh/002_search_results.html`
+- `tests/samples/ehdl/info_flat.txt`
+- `tests/samples/ehdl/info_invalid.txt`
+- `tests/samples/ehdl/info_original.txt`
+- `tests/samples/ehdl/info_pipe.txt`
+- `tests/samples/ehdl/info_translated.txt`
+- `tests/samples/eze/eze_broken.json`
+- `tests/samples/eze/eze_full_sample.json`
+- `tests/samples/eze/eze_lite_sample.json`
+- `tests/samples/fakku/001_search_response.html`
+- `tests/samples/fakku/002_gallery_front.html`
+- `tests/samples/gallerydl/gallerydl_arrayfulltags_sample.json`
+- `tests/samples/gallerydl/gallerydl_arraysingletags_sample.json`
+- `tests/samples/gallerydl/gallerydl_broken.json`
+- `tests/samples/gallerydl/gallerydl_hashtags_sample.json`
+- `tests/samples/hath/galleryinfo.txt`
+- `tests/samples/hentag/00_sample.json`
+- `tests/samples/hentag/01_sample.json`
+- `tests/samples/hentag/02_search_response.json`
+- `tests/samples/hentag/03_search_response_multiple.json`
+- `tests/samples/hentag/04_search_response_multiple_same_language.json`
+- `tests/samples/hentag/05_search_response_multiple_similar_titles.json`
+- `tests/samples/hitomi/2261881.js`
+- `tests/samples/koromo/koromo_multiauthor.json`
+- `tests/samples/koromo/koromo_multimag.json`
+- `tests/samples/koromo/koromo_sample.json`
+- `tests/samples/ksk/fake.yaml`
+- `tests/samples/ksk/fake_koharu.yaml`
+- `tests/samples/nh/001_search_results.json`
+- `tests/samples/nh/002_search_results_empty.json`
+- `tests/samples/nh/003_gid_52249.json`
+- `tests/samples/opds/opds_sample.xml`
+- `tests/samples/pixiv/ajax/illust.json`
+- `tests/samples/pixiv/ajax/manga_1.json`
+- `tests/samples/pixiv/ajax/manga_2.json`
+- `tests/samples/pixiv/illust_pixiv_comment_unescaped.txt`
+- `tests/samples/pixiv/manga_1_pixiv_comment_unescaped.txt`
+- `tests/samples/pixiv/manga_2_pixiv_comment_unescaped.txt`
+- `tests/samples/pixiv/manga_2_pixiv_comment_with_script.txt`
+- `tests/samples/pixiv/ssr/illust.html`
+- `tests/samples/pixiv/ssr/manga_1.html`
+- `tests/samples/pixiv/ssr/manga_2.html`
+- `tests/samples/reader.jpg`
+- `tests/samples/routing/js/ok.txt`
+- `tests/samples/routing/js/safe/ok2.txt`
+- `tests/samples/routing/secret.txt`
+- `tests/samples/sample.cbw`
+- `tests/search.t`
+- `tests/stamp.t`
+- `tests/tankoubon.t`
 
-### 项目配置
-```
-./
-├── lrr.conf
-├── package.json
-└── package-lock.json
-```
+### script (5)
 
-### Docker/构建配置
-```
-tools/build/docker/
-├── docker-compose.yml
-├── redis.conf
-└── wsl.conf
+- `script/backup`
+- `script/check_plugin_loads.pl`
+- `script/get_version`
+- `script/lanraragi`
+- `script/launcher.pl`
 
-tools/build/homebrew/
-└── redis.conf
+### tools/openapi.yaml (1)
 
-tools/build/windows/
-└── redis.conf
-```
+- `tools/openapi.yaml`
 
-### API 规范
-```
-tools/
-└── openapi.yaml
-```
+### tools/build (33)
 
-### 测试样本数据
-```
-tests/samples/
-├── chaika/
-│   ├── 001_gid_27240.json
-│   └── 002_sha1_response.json
-├── comicinfo/
-│   ├── 00_sample.xml
-│   ├── 01_sample.xml
-│   ├── 02_sample.xml
-│   └── 03_sample.xml
-├── eh/
-│   └── 001_gid-1866546.json
-├── eze/
-│   ├── eze_broken.json
-│   ├── eze_full_sample.json
-│   └── eze_lite_sample.json
-├── gallerydl/
-│   ├── gallerydl_arrayfulltags_sample.json
-│   ├── gallerydl_arraysingletags_sample.json
-│   ├── gallerydl_broken.json
-│   └── gallerydl_hashtags_sample.json
-├── hentag/
-│   ├── 00_sample.json
-│   ├── 01_sample.json
-│   ├── 02_search_response.json
-│   ├── 03_search_response_multiple.json
-│   ├── 04_search_response_multiple_same_language.json
-│   └── 05_search_response_multiple_similar_titles.json
-├── koromo/
-│   ├── koromo_multiauthor.json
-│   ├── koromo_multimag.json
-│   └── koromo_sample.json
-├── ksk/
-│   ├── fake.yaml
-│   └── fake_koharu.yaml
-├── opds/
-│   └── opds_sample.xml
-└── pixiv/ajax/
-    ├── illust.json
-    ├── manga_1.json
-    └── manga_2.json
-```
+- `tools/build/docker/Dockerfile`
+- `tools/build/docker/Dockerfile-dev`
+- `tools/build/docker/docker-compose.yml`
+- `tools/build/docker/install-perl-deps.sh`
+- `tools/build/docker/redis.conf`
+- `tools/build/docker/s6/cont-init.d/01-lrr-setup`
+- `tools/build/docker/s6/fix-attrs.d/01-lrr-dirs`
+- `tools/build/docker/s6/s6-rc.d/init/type`
+- `tools/build/docker/s6/s6-rc.d/init/up`
+- `tools/build/docker/s6/s6-rc.d/lanraragi/dependencies.d/init`
+- `tools/build/docker/s6/s6-rc.d/lanraragi/dependencies.d/redis`
+- `tools/build/docker/s6/s6-rc.d/lanraragi/finish`
+- `tools/build/docker/s6/s6-rc.d/lanraragi/run`
+- `tools/build/docker/s6/s6-rc.d/lanraragi/type`
+- `tools/build/docker/s6/s6-rc.d/redis/dependencies.d/init`
+- `tools/build/docker/s6/s6-rc.d/redis/run`
+- `tools/build/docker/s6/s6-rc.d/redis/type`
+- `tools/build/docker/s6/s6-rc.d/user/contents.d/init`
+- `tools/build/docker/s6/s6-rc.d/user/contents.d/lanraragi`
+- `tools/build/docker/s6/s6-rc.d/user/contents.d/redis`
+- `tools/build/homebrew/Lanraragi.rb`
+- `tools/build/homebrew/lanraragi`
+- `tools/build/homebrew/redis.conf`
+- `tools/build/windows/Karen`
+- `tools/build/windows/build-installer.ps1`
+- `tools/build/windows/cleanup.sh`
+- `tools/build/windows/create-dist.sh`
+- `tools/build/windows/install-deps.sh`
+- `tools/build/windows/install.sh`
+- `tools/build/windows/perl.exe.manifest`
+- `tools/build/windows/redis.conf`
+- `tools/build/windows/run.ps1`
+- `tools/build/windows/utf8-support.ps1`
 
----
+### tools/Documentation (104)
 
-## 🖼️ 图片文件 (14 个)
+- `tools/Documentation/.gitbook.yaml`
+- `tools/Documentation/.gitbook/assets/add-chapter.png`
+- `tools/Documentation/.gitbook/assets/archive_list.png`
+- `tools/Documentation/.gitbook/assets/archive_thumb.png`
+- `tools/Documentation/.gitbook/assets/backup.png`
+- `tools/Documentation/.gitbook/assets/batch.png`
+- `tools/Documentation/.gitbook/assets/batchlog.png`
+- `tools/Documentation/.gitbook/assets/bookmark_button.png`
+- `tools/Documentation/.gitbook/assets/bookmark_config.png`
+- `tools/Documentation/.gitbook/assets/brew.jpg`
+- `tools/Documentation/.gitbook/assets/categories.png`
+- `tools/Documentation/.gitbook/assets/category_filtered.png`
+- `tools/Documentation/.gitbook/assets/cfg.png`
+- `tools/Documentation/.gitbook/assets/cfg_plugin.png`
+- `tools/Documentation/.gitbook/assets/chapters.jpg`
+- `tools/Documentation/.gitbook/assets/chapters_sicp.jpg`
+- `tools/Documentation/.gitbook/assets/cloud.PNG`
+- `tools/Documentation/.gitbook/assets/download.png`
+- `tools/Documentation/.gitbook/assets/downloaders.png`
+- `tools/Documentation/.gitbook/assets/duplicates.png`
+- `tools/Documentation/.gitbook/assets/dureader.jpg`
+- `tools/Documentation/.gitbook/assets/edit.png`
+- `tools/Documentation/.gitbook/assets/favtags.jpg`
+- `tools/Documentation/.gitbook/assets/ichaival.png`
+- `tools/Documentation/.gitbook/assets/jails.jpg`
+- `tools/Documentation/.gitbook/assets/karen-dark.png`
+- `tools/Documentation/.gitbook/assets/karen-light.png`
+- `tools/Documentation/.gitbook/assets/karen-startmenu.png`
+- `tools/Documentation/.gitbook/assets/karen.png`
+- `tools/Documentation/.gitbook/assets/login.png`
+- `tools/Documentation/.gitbook/assets/lrr_react.jpg`
+- `tools/Documentation/.gitbook/assets/metrics_settings.png`
+- `tools/Documentation/.gitbook/assets/mountpoints.jpg`
+- `tools/Documentation/.gitbook/assets/msm.png`
+- `tools/Documentation/.gitbook/assets/opds.jpg`
+- `tools/Documentation/.gitbook/assets/openssl-error.png`
+- `tools/Documentation/.gitbook/assets/ratings.png`
+- `tools/Documentation/.gitbook/assets/reader.jpg`
+- `tools/Documentation/.gitbook/assets/reader_options.png`
+- `tools/Documentation/.gitbook/assets/reader_overlay.jpg`
+- `tools/Documentation/.gitbook/assets/search.png`
+- `tools/Documentation/.gitbook/assets/shell.jpg`
+- `tools/Documentation/.gitbook/assets/shiggy.png`
+- `tools/Documentation/.gitbook/assets/stamp-toggle.jpg`
+- `tools/Documentation/.gitbook/assets/stamps.jpg`
+- `tools/Documentation/.gitbook/assets/tachiyomi.jpg`
+- `tools/Documentation/.gitbook/assets/tank_creation.jpg`
+- `tools/Documentation/.gitbook/assets/tank_edition.png`
+- `tools/Documentation/.gitbook/assets/themes.png`
+- `tools/Documentation/.gitbook/assets/thumbchange.png`
+- `tools/Documentation/.gitbook/assets/uploading.png`
+- `tools/Documentation/.gitbook/assets/utf8-popup.png`
+- `tools/Documentation/.gitbook/assets/utf8-region.png`
+- `tools/Documentation/.gitbook/assets/utf8-restart.png`
+- `tools/Documentation/.gitbook/assets/webext.png`
+- `tools/Documentation/README.md`
+- `tools/Documentation/SUMMARY.md`
+- `tools/Documentation/advanced-usage/backup-and-restore.md`
+- `tools/Documentation/advanced-usage/batch-tagging.md`
+- `tools/Documentation/advanced-usage/downloading.md`
+- `tools/Documentation/advanced-usage/duplicate-detection.md`
+- `tools/Documentation/advanced-usage/external-readers.md`
+- `tools/Documentation/advanced-usage/network-interfaces.md`
+- `tools/Documentation/advanced-usage/plugin-registries.md`
+- `tools/Documentation/advanced-usage/proxy-setup.md`
+- `tools/Documentation/advanced-usage/stamps.md`
+- `tools/Documentation/advanced-usage/tag-rules.md`
+- `tools/Documentation/advanced-usage/tankoubons-and-chapters.md`
+- `tools/Documentation/api-documentation/archive-api.md`
+- `tools/Documentation/api-documentation/category-api.md`
+- `tools/Documentation/api-documentation/database-api.md`
+- `tools/Documentation/api-documentation/getting-started.md`
+- `tools/Documentation/api-documentation/minion-api.md`
+- `tools/Documentation/api-documentation/miscellaneous-other-api.md`
+- `tools/Documentation/api-documentation/opds-catalog.md`
+- `tools/Documentation/api-documentation/plugin-api.md`
+- `tools/Documentation/api-documentation/registry-api.md`
+- `tools/Documentation/api-documentation/search-api.md`
+- `tools/Documentation/api-documentation/shinobu-api.md`
+- `tools/Documentation/api-documentation/stamp-api.md`
+- `tools/Documentation/api-documentation/tankoubon-api.md`
+- `tools/Documentation/basic-operations/archives.md`
+- `tools/Documentation/basic-operations/categories.md`
+- `tools/Documentation/basic-operations/first-steps.md`
+- `tools/Documentation/basic-operations/metadata.md`
+- `tools/Documentation/basic-operations/searching.md`
+- `tools/Documentation/basic-operations/stats.md`
+- `tools/Documentation/basic-operations/themes.md`
+- `tools/Documentation/extending-lanraragi/architecture.md`
+- `tools/Documentation/extending-lanraragi/index.md`
+- `tools/Documentation/extending-lanraragi/translations.md`
+- `tools/Documentation/installing-lanraragi/community.md`
+- `tools/Documentation/installing-lanraragi/docker.md`
+- `tools/Documentation/installing-lanraragi/jail.md`
+- `tools/Documentation/installing-lanraragi/macos.md`
+- `tools/Documentation/installing-lanraragi/methods.md`
+- `tools/Documentation/installing-lanraragi/source.md`
+- `tools/Documentation/installing-lanraragi/windows.md`
+- `tools/Documentation/plugin-docs/code-examples.md`
+- `tools/Documentation/plugin-docs/download.md`
+- `tools/Documentation/plugin-docs/index.md`
+- `tools/Documentation/plugin-docs/login.md`
+- `tools/Documentation/plugin-docs/metadata.md`
+- `tools/Documentation/plugin-docs/scripts.md`
 
-### 网站图标和 UI 图片
-```
-public/
-├── favicon.ico
-└── img/
-    ├── empty.png
-    ├── flubbed.gif
-    ├── logo.png
-    ├── noThumb.png
-    ├── notfound.jpg
-    └── wait_warmly.jpg
-```
+### Root files (9)
 
-### 主题预览图
-```
-public/img/theme_preview/
-├── hachikuji.png
-├── hverse.png
-├── nadeko.png
-├── sadpanda.png
-└── yotsugi.png
-```
+- `.devcontainer/Dockerfile`
+- `.devcontainer/devcontainer.json`
+- `CONTRIBUTING.md`
+- `COPYING`
+- `README.md`
+- `eslint.config.mjs`
+- `package-lock.json`
+- `package.json`
+- `redocly.yml`
 
-### 测试/工具图片
-```
-tests/samples/
-└── reader.jpg
+### Other (66)
 
-tools/
-└── repository-open-graph-template.jpg
-```
+- `.dockerignore`
+- `.gitattributes`
+- `.github/FUNDING.yml`
+- `.github/ISSUE_TEMPLATE/feature-request-suggestion.md`
+- `.github/ISSUE_TEMPLATE/problem-report.md`
+- `.github/action-run-tests/Dockerfile`
+- `.github/action-run-tests/entrypoint.sh`
+- `.github/actions/docker-builder/action.yml`
+- `.github/actions/docker-merge/action.yml`
+- `.github/holopin.yml`
+- `.github/workflows/push-brewtest.yml`
+- `.github/workflows/push-continous-delivery.yml`
+- `.github/workflows/push-continuous-integration.yml`
+- `.github/workflows/release-delivery.yml`
+- `.gitignore`
+- `.gitmodules`
+- `.perlcriticrc`
+- `.perltidyrc`
+- `docs/README.md`
+- `docs/en/01_data_layer.md`
+- `docs/en/02_api.md`
+- `docs/en/03_utils.md`
+- `docs/en/04_plugins.md`
+- `docs/en/05_frontend.md`
+- `docs/en/06_models.md`
+- `docs/en/07_i18n.md`
+- `docs/en/08_build.md`
+- `docs/generate_docs.py`
+- `docs/zh-CN/01_data_layer.md`
+- `docs/zh-CN/02_api.md`
+- `docs/zh-CN/03_utils.md`
+- `docs/zh-CN/04_plugins.md`
+- `docs/zh-CN/05_frontend.md`
+- `docs/zh-CN/06_models.md`
+- `docs/zh-CN/07_i18n.md`
+- `docs/zh-CN/08_build.md`
+- `lib/Worker.pm`
+- `log/.gitignore`
+- `public/.gitignore`
+- `public/app.webappmanifest`
+- `public/css/.gitignore`
+- `public/css/config.css`
+- `public/css/lrr.css`
+- `public/favicon.ico`
+- `public/img/.gitignore`
+- `public/img/empty.png`
+- `public/img/flubbed.gif`
+- `public/img/logo.png`
+- `public/img/noThumb.png`
+- `public/img/notfound.jpg`
+- `public/img/theme_preview/ex.png`
+- `public/img/theme_preview/g.png`
+- `public/img/theme_preview/modern.png`
+- `public/img/theme_preview/modern_clear.png`
+- `public/img/theme_preview/modern_red.png`
+- `public/img/wait_warmly.jpg`
+- `public/robots.txt`
+- `tools/cpanfile`
+- `tools/generate_registry.pl`
+- `tools/install.pl`
+- `tools/k6/covers_cold.js`
+- `tools/k6/page_fetching.js`
+- `tools/k6/single_archive_cold.js`
+- `tools/k6/single_archive_warm.js`
+- `tools/lanraragi-systemd.service`
+- `tools/repository-open-graph-template.jpg`
 
----
-
-## 📝 文档文件 (57 个)
-
-### 项目根目录
-```
-./
-├── CONTRIBUTING.md
-├── README.md
-└── COPYING (LICENSE)
-```
-
-### 本项目文档
-```
-docs/
-└── project_tree.md
-```
-
-### 官方文档
-```
-tools/Documentation/
-├── README.md
-├── SUMMARY.md
-├── advanced-usage/
-│   ├── backup-and-restore.md
-│   ├── batch-tagging.md
-│   ├── categories.md
-│   ├── downloading.md
-│   ├── external-readers.md
-│   ├── network-interfaces.md
-│   ├── proxy-setup.md
-│   └── tag-rules.md
-├── api-documentation/
-│   ├── archive-api.md
-│   ├── category-api.md
-│   ├── database-api.md
-│   ├── getting-started.md
-│   ├── minion-api.md
-│   ├── miscellaneous-other-api.md
-│   ├── opds-catalog.md
-│   ├── plugin-api.md
-│   ├── search-api.md
-│   ├── shinobu-api.md
-│   └── tankoubon-api.md
-├── basic-operations/
-│   ├── archives.md
-│   ├── first-steps.md
-│   ├── metadata.md
-│   ├── searching.md
-│   ├── stats.md
-│   └── themes.md
-├── extending-lanraragi/
-│   ├── architecture.md
-│   ├── index.md
-│   └── translations.md
-├── installing-lanraragi/
-│   ├── community.md
-│   ├── docker.md
-│   ├── jail.md
-│   ├── macos.md
-│   ├── methods.md
-│   ├── source.md
-│   └── windows.md
-└── plugin-docs/
-    ├── code-examples.md
-    ├── download.md
-    ├── index.md
-    ├── login.md
-    ├── metadata.md
-    └── scripts.md
-```
-
-### 测试样本文本
-```
-tests/samples/
-├── ehdl/
-│   ├── info_flat.txt
-│   ├── info_invalid.txt
-│   ├── info_original.txt
-│   ├── info_pipe.txt
-│   └── info_translated.txt
-├── hath/
-│   └── galleryinfo.txt
-└── pixiv/
-    ├── illust_pixiv_comment_unescaped.txt
-    ├── manga_1_pixiv_comment_unescaped.txt
-    ├── manga_2_pixiv_comment_unescaped.txt
-    └── manga_2_pixiv_comment_with_script.txt
-```
-
-### 其他
-```
-public/
-└── robots.txt
-```
-
----
-
-## 🔧 Shell/PowerShell 脚本 (8 个)
-
-### Docker 构建
-```
-tools/build/docker/
-└── install-everything.sh
-```
-
-### Windows 构建
-```
-tools/build/windows/
-├── build-installer.ps1
-├── cleanup.sh
-├── create-dist.sh
-├── install-deps.sh
-├── install.sh
-├── run.ps1
-└── utf8-support.ps1
-```
-
----
-
-## 🌍 本地化文件 (14 个)
-
-```
-locales/template/
-├── as.po      (阿萨姆语)
-├── de.po      (德语)
-├── en.po      (英语)
-├── es.po      (西班牙语)
-├── fr.po      (法语)
-├── id.po      (印尼语)
-├── it.po      (意大利语)
-├── ja.po      (日语)
-├── ko.po      (韩语)
-├── nb_NO.po   (挪威语)
-├── pt.po      (葡萄牙语)
-├── vi.po      (越南语)
-├── zh.po      (简体中文)
-└── zh_Hant.po (繁体中文)
-```
-
----
-
-## 📁 其他重要文件
-
-### Docker 配置
-```
-tools/build/docker/
-├── Dockerfile
-├── Dockerfile-dev
-├── Dockerfile-legacy
-└── s6/ (服务管理配置)
-```
-
-### Homebrew 配置
-```
-tools/build/homebrew/
-├── Lanraragi.rb
-└── lanraragi
-```
-
-### Perl 依赖
-```
-tools/
-├── cpanfile
-└── install.pl
-```
-
-### 开发配置
-```
-./
-├── .eslintrc.json
-├── .perlcriticrc
-├── .perltidyrc
-├── .gitignore
-├── .gitattributes
-├── .gitmodules
-└── .dockerignore
-```
-
----
-
-## 📐 项目结构概览
-
-```
-LANraragi/
-├── lib/                    # Perl 后端代码
-│   ├── LANraragi/
-│   │   ├── Controller/    # MVC Controller
-│   │   ├── Model/         # MVC Model
-│   │   ├── Plugin/        # 插件系统
-│   │   └── Utils/         # 工具类
-│   ├── LANraragi.pm
-│   ├── Shinobu.pm
-│   └── Worker.pm
-├── public/                 # 静态资源
-│   ├── css/               # 样式表
-│   ├── js/                # JavaScript
-│   ├── img/               # 图片
-│   └── themes/            # 主题
-├── templates/              # 页面模板
-├── locales/                # 国际化
-├── tests/                  # 测试文件
-├── tools/                  # 工具和文档
-│   ├── Documentation/     # 官方文档
-│   └── build/             # 构建脚本
-├── script/                 # 启动脚本
-├── log/                    # 日志目录
-└── docs/                   # 项目文档（新建）
-```

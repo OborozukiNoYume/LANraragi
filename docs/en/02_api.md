@@ -1,335 +1,242 @@
-# API Layer Architecture
+# HTTP API
 
-> **Analyzed Files**: `Routing.pm`, `Api/Archive.pm`, `Api/Search.pm`
+> Baseline commit `2094cc1d` (2026-09-04). Endpoint table extracted mechanically from `tools/openapi.yaml` (OpenAPI 3.1). Facts verified against code.
 
----
+## Overview and routing
 
-## 📊 Routing Architecture Overview
+All `/api/*` traffic is handled by **Mojolicious::Plugin::OpenAPI**, which is loaded in `apply_routes()` in `lib/LANraragi/Utils/Routing.pm` with `tools/openapi.yaml` as its spec. The spec is versioned as OpenAPI 3.1.0 and declares a single server entry, `https://lrr.tvc-16.science/api`; the plugin derives the `/api` path prefix from that server URL, so every operation path listed in the reference table below is served under `/api` (e.g. `/archives` means `GET /api/archives`).
 
-### Middleware Chain
+Each operation in the spec carries an `x-mojo-to` stub such as `api-search#handle_api`, which maps it to a controller method in `lib/LANraragi/Controller/Api/`. The plugin validates incoming requests (path/query/body parameters) against the spec before the controller runs; validation failures are turned into a 400 response by the `openapi.valid_input` override in `lib/LANraragi/Utils/OpenAPI.pm`, which also logs the errors server-side. The `disableopenapi` configuration flag (exposed in the Config UI) bypasses both request and response validation while keeping the routing intact.
 
-```mermaid
-graph LR
-    A[Request] --> B{CORS?}
-    B -->|Yes| C[setup_cors]
-    B -->|No| D{No-Fun Mode?}
-    C --> D
-    D -->|Yes| E[logged_in]
-    D -->|No| F[Public Route]
-    E --> G[Handler]
-    F --> G
-```
+Two cross-cutting options are wired around the API router in `apply_routes()`:
 
-### Route Types
+- **CORS** (`enablecors`, off by default): routes are mounted under `setup_cors()` in `lib/LANraragi/Controller/Login.pm`, which answers browser preflights with `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: GET, OPTIONS, POST, DELETE, PUT` and explicitly allows the `Authorization` header.
+- **No-Fun Mode** (`nofunmode`, off by default): the entire OpenAPI router is mounted under `logged_in_api()` in `lib/LANraragi/Controller/Login.pm`, so *every* request — including endpoints whose spec entry is `security: []` — must be authenticated or it fails with 401 and a `{"error": "This API is protected and requires login or an API Key."}` body. Web UI routes are locked behind a session login at the same time.
 
-| Type | Permission | Purpose |
-|------|------------|---------|
-| `public_routes` | No auth required | Index, Reader, Login |
-| `public_api` | No auth required | Public API (can be locked by No-Fun) |
-| `logged_in` | Auth required | Admin pages |
-| `logged_in_api` | Auth required | Admin API |
+## Authentication
 
----
+The spec names one security scheme, `api_key`; its callback (defined in the plugin setup in `lib/LANraragi/Utils/Routing.pm`) delegates to `is_logged_in_api()` in `lib/LANraragi/Utils/Login.pm`. A request passes if any of the following holds:
 
-## 🔗 Complete API Endpoint List
+1. An `Authorization: Bearer {base64(apikey)}` header, where the value is the base64 encoding of the raw API key configured in the server's Configuration page.
+2. A `?key={apikey}` query parameter containing the raw key. The code comments call this "undocumented, mostly just meant for OPDS": readers that cannot send custom headers use it, and `lib/LANraragi/Model/Opds.pm` threads the value through the catalog's pagination links so navigation stays authenticated.
+3. An existing logged-in browser session.
+4. Password protection is disabled entirely (`enablepass` set to 0; it is on by default).
 
-### Archive API (`/api/archives`)
+In the reference table, **Auth = "No"** means the operation is declared `security: []` in the spec and needs no credentials (unless No-Fun Mode is enabled, see above); operations whose Auth column reads **"API key"** go through the `api_key` scheme.
 
-| Method | Path | Auth | Handler | Description |
-|--------|------|------|---------|-------------|
-| GET | `/api/archives` | ❌ | `serve_archivelist` | Get all archives list |
-| GET | `/api/archives/untagged` | ❌ | `serve_untagged_archivelist` | Get untagged archives |
-| GET | `/api/archives/:id` | ❌ | `serve_metadata` | [Deprecated] Get metadata |
-| GET | `/api/archives/:id/metadata` | ❌ | `serve_metadata` | Get archive metadata |
-| GET | `/api/archives/:id/thumbnail` | ❌ | `serve_thumbnail` | Get thumbnail |
-| GET | `/api/archives/:id/download` | ❌ | `serve_file` | Download original file |
-| GET | `/api/archives/:id/page` | ❌ | `serve_page` | Get specific page |
-| GET | `/api/archives/:id/files` | ❌ | `get_file_list` | Get file list |
-| GET | `/api/archives/:id/categories` | ❌ | `get_categories` | Get belonging categories |
-| GET | `/api/archives/:id/tankoubons` | ❌ | `get_tankoubons_file` | Get belonging collections |
-| PUT | `/api/archives/upload` | ✅ | `create_archive` | Upload new archive |
-| PUT | `/api/archives/:id/metadata` | ✅ | `update_metadata` | Update metadata |
-| PUT | `/api/archives/:id/thumbnail` | ✅ | `update_thumbnail` | Update thumbnail |
-| PUT | `/api/archives/:id/progress/:page` | ⚙️ | `update_progress` | Update reading progress |
-| POST | `/api/archives/:id/files/thumbnails` | ❌ | `generate_page_thumbnails` | Generate page thumbnails |
-| DELETE | `/api/archives/:id` | ✅ | `delete_archive` | Delete archive |
-| DELETE | `/api/archives/:id/isnew` | ❌ | `clear_new` | Clear new flag |
+Two progression endpoints deserve a special mention. `PUT /api/archives/{id}/progress/{page}` and `PUT /api/tankoubons/{id}/progress/{page}` are declared `security: []`, but their handlers — `update_progress()` in `lib/LANraragi/Controller/Api/Archive.pm` and `update_tank_progress()` in `lib/LANraragi/Controller/Api/Tankoubon.pm` — call `is_logged_in_api()` themselves and answer 401 when the `authprogress` setting is enabled, so casual readers cannot forge another client's progress. The archive handler additionally refuses the update with 400 when server-side progress tracking is disabled (`localprogress` without `authprogress`) or when the archive has no recorded page count (bypassable with an undocumented `force` parameter).
 
-> ⚙️ = Configurable (`enable_authprogress`)
+## Response format and errors
 
----
+Most mutating endpoints report their outcome through `render_api_response()` in `lib/LANraragi/Utils/Generic.pm`, which produces:
 
-### Search API (`/api/search`)
-
-| Method | Path | Auth | Handler | Description |
-|--------|------|------|---------|-------------|
-| GET | `/search` | ❌ | `handle_datatables` | DataTables format (internal) |
-| GET | `/api/search` | ❌ | `handle_api` | Public search API |
-| GET | `/api/search/random` | ❌ | `get_random_archives` | Get random archives |
-| DELETE | `/api/search/cache` | ✅ | `clear_cache` | Clear search cache |
-
-#### Search API Parameters
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `filter` | string | - | Search keywords (see syntax below) |
-| `category` | string | "" | Category ID |
-| `start` | int | 0 | Pagination offset. **Use `-1` to get full unpaged results** (since 0.8.2) |
-| `sortby` | string | "title" | Sort field: `title` or `lastread` (if server-side progress enabled) |
-| `order` | string | "asc" | Sort direction (asc/desc) |
-| `newonly` | bool | false | New archives only |
-| `untaggedonly` | bool | false | Untagged only |
-| `groupby_tanks` | bool | false | Group by collections |
-
-#### Search Query Syntax
-
-| Syntax | Description | Example |
-|--------|-------------|---------|
-| `keyword` | Fuzzy match title/tags | `fate` |
-| `"..."` | Exact string search | `"fate grand order"` |
-| `?` or `_` | Single character wildcard | `fate_go` |
-| `*` or `%` | Multi-character wildcard | `fate*` |
-| `-keyword` | Exclude term | `-yaoi` |
-| `$` suffix | Exact tag match (ignores misc) | `artist:rco$` |
-| `namespace:value` | Namespace search | `artist:wada` |
-| `pages:>N` | Page count filter | `pages:>=50` |
-| `read:>N` | Read progress filter | `read:10` |
-
-#### Search Response Codes
-
-| Code | Description |
-|------|-------------|
-| `200` | Success with results |
-| `204` | Search engine not initialized (wait a few seconds) |
-
-#### Random Search Parameters (`/api/search/random`)
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `filter` | string | - | Search keywords |
-| `category` | string | "" | Category ID |
-| `newonly` | bool | false | New archives only |
-| `untaggedonly` | bool | false | Untagged only |
-| `groupby_tanks` | bool | false | Group by collections |
-| `count` | int | 5 | Number of random archives to return |
-
----
-
-### Category API (`/api/categories`)
-
-| Method | Path | Auth | Handler |
-|--------|------|------|---------|
-| GET | `/api/categories` | ❌ | `get_category_list` |
-| GET | `/api/categories/:id` | ❌ | `get_category` |
-| GET | `/api/categories/bookmark_link` | ❌ | `get_bookmark_link` |
-| PUT | `/api/categories` | ✅ | `create_category` |
-| PUT | `/api/categories/:id` | ✅ | `update_category` |
-| PUT | `/api/categories/:id/:archive` | ✅ | `add_to_category` |
-| PUT | `/api/categories/bookmark_link/:id` | ✅ | `update_bookmark_link` |
-| DELETE | `/api/categories/:id` | ✅ | `delete_category` |
-| DELETE | `/api/categories/:id/:archive` | ✅ | `remove_from_category` |
-| DELETE | `/api/categories/bookmark_link` | ✅ | `remove_bookmark_link` |
-
----
-
-### Tankoubon API (`/api/tankoubons`)
-
-| Method | Path | Auth | Handler |
-|--------|------|------|---------|
-| GET | `/api/tankoubons` | ❌ | `get_tankoubon_list` |
-| GET | `/api/tankoubons/:id` | ❌ | `get_tankoubon` |
-| PUT | `/api/tankoubons` | ✅ | `create_tankoubon` |
-| PUT | `/api/tankoubons/:id` | ✅ | `update_tankoubon` |
-| PUT | `/api/tankoubons/:id/:archive` | ✅ | `add_to_tankoubon` |
-| DELETE | `/api/tankoubons/:id` | ✅ | `delete_tankoubon` |
-| DELETE | `/api/tankoubons/:id/:archive` | ✅ | `remove_from_tankoubon` |
-
----
-
-### Database API (`/api/database`)
-
-| Method | Path | Auth | Handler |
-|--------|------|------|---------|
-| GET | `/api/database/backup` | ✅ | `serve_backup` |
-| GET | `/api/database/stats` | ❌ | `serve_tag_stats` |
-| DELETE | `/api/database/isnew` | ✅ | `clear_new_all` |
-| POST | `/api/database/drop` | ✅ | `drop_database` |
-| POST | `/api/database/clean` | ✅ | `clean_database` |
-
----
-
-### Other APIs
-
-#### Shinobu API (`/api/shinobu`)
-| Method | Path | Auth | Handler |
-|--------|------|------|---------|
-| GET | `/api/shinobu` | ✅ | `shinobu_status` |
-| POST | `/api/shinobu/stop` | ✅ | `stop_shinobu` |
-| POST | `/api/shinobu/restart` | ✅ | `restart_shinobu` |
-| POST | `/api/shinobu/rescan` | ✅ | `reset_filemap` |
-
-#### Minion API (`/api/minion`)
-| Method | Path | Auth | Handler |
-|--------|------|------|---------|
-| GET | `/api/minion/:jobid` | ❌ | `minion_job_status` |
-| GET | `/api/minion/:jobid/detail` | ✅ | `minion_job_detail` |
-| POST | `/api/minion/:jobname/queue` | ✅ | `queue_minion_job` |
-
-#### OPDS API (`/api/opds`)
-| Method | Path | Auth | Handler |
-|--------|------|------|---------|
-| GET | `/api/opds` | ❌ | `serve_opds_catalog` |
-| GET | `/api/opds/:id` | ❌ | `serve_opds_item` |
-| GET | `/api/opds/:id/pse` | ❌ | `serve_opds_page` |
-
-#### Misc API
-| Method | Path | Auth | Handler |
-|--------|------|------|---------|
-| GET | `/api/info` | ❌ | `serve_serverinfo` |
-| GET | `/api/plugins/:type` | ✅ | `list_plugins` |
-| POST | `/api/plugins/use` | ✅ | `use_plugin_sync` |
-| POST | `/api/plugins/queue` | ✅ | `use_plugin_async` |
-| POST | `/api/download_url` | ✅ | `download_url` |
-| POST | `/api/regen_thumbs` | ✅ | `regen_thumbnails` |
-| DELETE | `/api/tempfolder` | ✅ | `clean_tempfolder` |
-
----
-
-## 🔐 Authentication Modes
-
-### 1. Password Protection (Session)
-```perl
-$public_routes->post('/login')->to('login#check');
-$logged_in = $public_routes->under('/')->to('login#logged_in');
-```
-
-### 2. API Key
-```perl
-# Checked in login#logged_in_api
-# Header format: "Bearer " + base64(api_key)
-Authorization: Bearer {base64_encoded_api_key}
-
-# Alternative: query parameter (undocumented, mainly for OPDS)
-?key={api_key}
-```
-
-### 3. No-Fun Mode
-Forces all public routes to require authentication:
-```perl
-if ( $self->LRR_CONF->enable_nofun ) {
-    $public_routes = $logged_in;
-    $public_api = $logged_in_api;
-}
-```
-
----
-
-## 📝 Response Format
-
-### Success Response
 ```json
-{
-    "operation": "update_metadata",
-    "success": 1,
-    "message": "Updated metadata for \"Title\"!"
-}
+{ "operation": "update_metadata", "success": 1, "error": "", "successMessage": "" }
 ```
 
-### Error Response
-```json
-{
-    "operation": "update_metadata",
-    "success": 0,
-    "error": "No archive ID specified."
-}
-```
+Failures return HTTP 400 with `success: 0` and a message in `error`; successes return HTTP 200 and may carry a `successMessage`. On top of that convention, the OpenAPI layer itself can answer with 400 (request validation, body lists the offending parameters) or 401 (failed security check), and the No-Fun Mode / metrics chain answers with its own 401 JSON shown above.
 
-### List Response
-```json
-{
-    "recordsTotal": 100,
-    "recordsFiltered": 25,
-    "data": [...]
-}
-```
+## Search endpoints in detail
 
----
+The four search operations live in `lib/LANraragi/Controller/Api/Search.pm`; the three queries (`GET /api/search`, `GET /api/search/ids`, `GET /api/search/random`) are backed by `do_search()` in `lib/LANraragi/Model/Search.pm`, while `DELETE /api/search/cache` just calls `invalidate_cache()`. `GET /api/search` and `GET /api/search/ids` accept the same parameters:
 
-## 🔒 Concurrent Lock Mechanism
+| Parameter | Default | Meaning |
+|---|---|---|
+| `filter` | — | Search query; syntax below |
+| `category` | — | Category ID to restrict the search to. Static categories intersect their archive list; dynamic categories contribute their own search predicate as extra filter tokens |
+| `start` | `0` | Offset into the result list, paginated by the server-side page size (`pagesize`, default 100). `-1` returns the full, unpaged result set |
+| `sortby` | `title` | `title`, `lastread`, or **any tag namespace** (`artist`, `date_added`, …) |
+| `order` | `asc` | Sort direction, `asc` or `desc` |
+| `newonly` | `false` | Restrict to archives flagged new |
+| `untaggedonly` | `false` | Restrict to untagged archives |
+| `groupby_tanks` | `true` | When enabled, Tankoubons appear in results in place of the archives they contain (this also changes `recordsTotal`) |
+| `hidecompleted` | `false` | Hide archives whose progress exceeds 85% of their page count |
 
-Using `exec_with_lock` to prevent concurrent writes:
+Responses carry `{recordsTotal, recordsFiltered, data}`; for `/api/search` the `data` array holds full archive metadata JSON objects, for `/api/search/ids` only the archive IDs. If the search engine has not been initialized yet (no `LAST_JOB_TIME` marker in the search Redis database), both endpoints return **HTTP 204** instead of results.
 
-```perl
-exec_with_lock( $self, $redis, "archive-write:$id", "operation", $id, sub {
-    # Critical section code
-});
-```
+Sorting notes, from `sort_results()` in `lib/LANraragi/Model/Search.pm`:
 
-**Lock Types:**
-- `upload:{filename}` - Upload lock
-- `archive-write:{id}` - Archive modification lock
+- Sorting by an arbitrary namespace partitions the results: archives that carry the namespace (naturally sorted by its value) come first, those without it are pushed to the back. For `date_added`/`timestamp`, Tankoubons inherit a date from their member archives.
+- `lastread` requires server-side progress tracking and silently drops IDs that have never been read.
 
----
+`GET /api/search/random` takes `filter`, `category`, `newonly`, `untaggedonly`, `groupby_tanks`, `hidecompleted` and a `count` (default 5); it draws random entries out of the full filtered set and returns full metadata objects. Every query is cached in the search Redis database (`LRR_SEARCHCACHE`, including reuse of inverted sort orders); `DELETE /api/search/cache` maps to `invalidate_cache()` in `lib/LANraragi/Utils/Database.pm` to drop it.
 
-## 🔍 Search Engine Deep Analysis
+### Filter syntax
 
-### Search Flow
+The `filter` string is parsed by `compute_search_filter()` in `lib/LANraragi/Model/Search.pm`; the cases below are exercised by `tests/search.t`.
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Controller as Api/Search
-    participant Model as Model/Search
-    participant Cache as Redis Cache
-    participant Index as Redis Index
-    
-    Client->>Controller: GET /api/search?filter=...
-    Controller->>Model: do_search(params)
-    Model->>Cache: check_cache(cachekey)
-    alt Cache Hit
-        Cache-->>Model: frozen data
-        Model->>Model: thaw(data)
-    else Cache Miss
-        Model->>Index: search_uncached()
-        Model->>Cache: nfreeze + hset
-    end
-    Model-->>Controller: (total, filtered, ids[])
-    Controller->>Controller: get_archive_json_multi(ids)
-    Controller-->>Client: JSON response
-```
+- Terms are comma-separated and combined with AND logic.
+- A bare keyword matches tags **and** titles fuzzily (substring match).
+- `namespace:value` restricts the match to that tag namespace; without a namespace the term matches tags in any namespace.
+- Double quotes (`"male:very cool"`) make the term an exact string match and allow spaces inside it.
+- A leading `-` excludes the term that follows (`-character:ereshkigal`); it must sit *outside* quotes to work.
+- A trailing `$` forces an exact tag match (`character:segata$`).
+- `?` or `_` match any single character; `*` or `%` match any run of characters. Both pairs are interchangeable.
+- `pages:` and `read:` compare against the page count and the pages-read counter respectively, accepting `=` (implicit), `>`, `>=`, `<`, `<=` — e.g. `pages:>150`, `read:<11, read:>9`.
+- Terms are lowercased before matching.
 
-### Cache Mechanism
+## Endpoint reference
 
-```perl
-# Cache Key Format
-$cachekey = "$category_id-$filter-$sortkey-$sortorder-$newonly-$untaggedonly-$grouptanks"
+87 operations across 64 paths, grouped by spec tag. Paths are relative to the `/api` prefix; handlers are `x-mojo-to` values resolved against `lib/LANraragi/Controller/Api/`. Auth "API key" corresponds to the `api_key` security scheme, "No" to `security: []`.
+**archives** (20 operations)
 
-# Serialization: Storable (nfreeze/thaw)
-$redis->hset( "LRR_SEARCHCACHE", $cachekey, nfreeze \@filtered );
-```
+| Method | Path | Handler | Auth | Description |
+|---|---|---|---|---|
+| `GET` | `/archives` | `api-archive#serve_archivelist` | No | Get all Archives |
+| `GET` | `/archives/untagged` | `api-archive#serve_untagged_archivelist` | No | Get all untagged archives |
+| `PUT` | `/archives/upload` | `api-archive#create_archive` | API key | 🔑 Upload Archive |
+| `DELETE` | `/archives/{id}` | `api-archive#delete_archive` | API key | 🔑 Delete archive |
+| `GET` | `/archives/{id}` | `api-archive#serve_metadata` | No | Get archive metadata (deprecated) |
+| `GET` | `/archives/{id}/categories` | `api-archive#get_categories` | No | Get archive categories |
+| `GET` | `/archives/{id}/download` | `api-archive#serve_file` | No | Download archive |
+| `GET` | `/archives/{id}/files` | `api-archive#get_file_list` | No | Extract an Archive |
+| `POST` | `/archives/{id}/files/thumbnails` | `api-archive#generate_page_thumbnails` | No | Extract page thumbnails |
+| `DELETE` | `/archives/{id}/isnew` | `api-archive#clear_new` | No | Clear Archive New flag |
+| `PUT` | `/archives/{id}/isnew` | `api-archive#add_new` | API key | 🔑 Set Archive New flag |
+| `GET` | `/archives/{id}/metadata` | `api-archive#serve_metadata` | No | Get archive metadata |
+| `PUT` | `/archives/{id}/metadata` | `api-archive#update_metadata` | API key | 🔑 Update archive metadata |
+| `GET` | `/archives/{id}/page` | `api-archive#serve_page` | No | Get an archive page |
+| `PUT` | `/archives/{id}/progress/{page}` | `api-archive#update_progress` | No | Update reading progression |
+| `GET` | `/archives/{id}/tankoubons` | `api-tankoubon#get_tankoubons_file` | No | Get archive tankoubons |
+| `GET` | `/archives/{id}/thumbnail` | `api-archive#serve_thumbnail` | No | Get archive thumbnail |
+| `PUT` | `/archives/{id}/thumbnail` | `api-archive#update_thumbnail` | API key | 🔑 Update archive thumbnail |
+| `DELETE` | `/archives/{id}/toc` | `api-archive#remove_toc` | API key | 🔑 Remove entry from Archive Table of Contents |
+| `PUT` | `/archives/{id}/toc` | `api-archive#add_toc` | API key | 🔑 Add entry to Archive Table of Contents |
 
-**Cache Invalidation:**
-- Call `invalidate_cache()` to delete `LRR_SEARCHCACHE`
-- `lastread` sorting does not use cache
+**categories** (10 operations)
 
-### Index Utilization
+| Method | Path | Handler | Auth | Description |
+|---|---|---|---|---|
+| `GET` | `/categories` | `api-category#get_category_list` | No | Get all Categories |
+| `PUT` | `/categories` | `api-category#create_category` | API key | 🔑 Create a Category |
+| `DELETE` | `/categories/bookmark_link` | `api-category#remove_bookmark_link` | API key | 🔑 Disable bookmark feature |
+| `GET` | `/categories/bookmark_link` | `api-category#get_bookmark_link` | No | Get bookmark-linked Category |
+| `PUT` | `/categories/bookmark_link/{id}` | `api-category#update_bookmark_link` | API key | 🔑 Update bookmark-linked Category |
+| `DELETE` | `/categories/{id}` | `api-category#delete_category` | API key | 🔑 Delete Category |
+| `GET` | `/categories/{id}` | `api-category#get_category` | No | Get a single Category |
+| `PUT` | `/categories/{id}` | `api-category#update_category` | API key | 🔑 Update Category |
+| `DELETE` | `/categories/{id}/{archive}` | `api-category#remove_from_category` | API key | 🔑 Remove an Archive from a Category |
+| `PUT` | `/categories/{id}/{archive}` | `api-category#add_to_category` | API key | 🔑 Add an Archive to a Category |
 
-| Sort/Filter | Index Used |
-|-------------|-----------|
-| Title Search | `LRR_TITLES` (Sorted Set ZSCAN) |
-| Tag Search | `INDEX_{tag}` (Set SMEMBERS) |
-| New Archives | `LRR_NEW` (Set) |
-| Untagged | `LRR_UNTAGGED` (Set) |
-| Collection Grouping | `LRR_TANKGROUPED` (Set) |
+**database** (8 operations)
 
----
+| Method | Path | Handler | Auth | Description |
+|---|---|---|---|---|
+| `GET` | `/database/backup` | `api-database#serve_backup` | API key | 🔑 Get a backup JSON |
+| `POST` | `/database/backup` | `api-database#queue_backup` | API key | 🔑 Queue a backup job |
+| `GET` | `/database/backup/{jobid}` | `api-database#download_backup` | API key | 🔑 Download backup JSON from completed job |
+| `POST` | `/database/clean` | `api-database#clean_database` | API key | 🔑 Clean the Database |
+| `POST` | `/database/drop` | `api-database#drop_database` | API key | 🔑 Drop the Database |
+| `DELETE` | `/database/isnew` | `api-database#clear_new_all` | API key | 🔑 Clear All "New" flags |
+| `POST` | `/database/restore` | `api-database#queue_restore` | API key | 🔑 Queue a restore job |
+| `GET` | `/database/stats` | `api-database#serve_tag_stats` | No | Get Statistics |
 
-## ✅ Summary
+**minion** (3 operations)
 
-| Finding | Details |
-|---------|---------|
-| **Total Endpoints** | 60+ (API + Pages) |
-| **Auth Modes** | Session + API Key + No-Fun |
-| **Response Format** | JSON with operation/success |
-| **Concurrency Control** | Redis distributed locks |
-| **Special Features** | OPDS, WebSocket (batch) |
+| Method | Path | Handler | Auth | Description |
+|---|---|---|---|---|
+| `GET` | `/minion/{jobid}` | `api-minion#minion_job_status` | No | Get the basic status of a Minion Job |
+| `GET` | `/minion/{jobid}/detail` | `api-minion#minion_job_detail` | API key | 🔑 Get the full status of a Minion Job |
+| `POST` | `/minion/{jobname}/queue` | `api-minion#queue_minion_job` | API key | 🔑 Queue a Minion job |
+
+**misc** (4 operations)
+
+| Method | Path | Handler | Auth | Description |
+|---|---|---|---|---|
+| `POST` | `/download_url` | `api-other#download_url` | API key | Queue a URL download |
+| `GET` | `/info` | `api-other#serve_serverinfo` | No | Get server info |
+| `POST` | `/regen_thumbs` | `api-other#regen_thumbnails` | API key | Regenerate Thumbnails |
+| `DELETE` | `/tempfolder` | `api-other#clean_tempfolder` | API key | Clean the Temporary Folder |
+
+**opds** (3 operations)
+
+| Method | Path | Handler | Auth | Description |
+|---|---|---|---|---|
+| `GET` | `/opds` | `api-other#serve_opds_catalog` | No | Get the OPDS Catalog |
+| `GET` | `/opds/{id}` | `api-other#serve_opds_item` | No | Get a specific archive through OPDS |
+| `GET` | `/opds/{id}/pse` | `api-other#serve_opds_page` | No | OPDS-PSE |
+
+**plugins** (5 operations)
+
+| Method | Path | Handler | Auth | Description |
+|---|---|---|---|---|
+| `POST` | `/plugins/install` | `api-plugins#install_plugin` | API key | 🔑 Install a Plugin |
+| `DELETE` | `/plugins/installed/{plugin_namespace}` | `api-plugins#uninstall_plugin` | API key | 🔑 Uninstall a Plugin |
+| `POST` | `/plugins/queue` | `api-other#use_plugin_async` | API key | 🔑 Use a Plugin Asynchronously |
+| `POST` | `/plugins/use` | `api-other#use_plugin_sync` | API key | 🔑 Use a Plugin |
+| `GET` | `/plugins/{type}` | `api-other#list_plugins` | API key | 🔑 List available plugins |
+
+**registries** (9 operations)
+
+| Method | Path | Handler | Auth | Description |
+|---|---|---|---|---|
+| `GET` | `/registries` | `api-registry#list_registries` | API key | 🔑 List Registries |
+| `POST` | `/registries` | `api-registry#create_registry` | API key | 🔑 Create a Registry |
+| `DELETE` | `/registries/default_registry` | `api-registry#remove_default_registry` | API key | 🔑 Clear Default Repository |
+| `GET` | `/registries/default_registry` | `api-registry#get_default_registry` | API key | Get Default Repository |
+| `PUT` | `/registries/default_registry/{id}` | `api-registry#update_default_registry` | API key | 🔑 Set Default Repository |
+| `DELETE` | `/registries/{id}` | `api-registry#delete_registry` | API key | 🔑 Delete a Registry |
+| `GET` | `/registries/{id}` | `api-registry#get_registry` | API key | 🔑 Get a Registry |
+| `PUT` | `/registries/{id}` | `api-registry#update_registry` | API key | 🔑 Update a Registry |
+| `POST` | `/registries/{id}/refresh` | `api-registry#refresh_registry` | API key | 🔑 Refresh Registry Index |
+
+**search** (4 operations)
+
+| Method | Path | Handler | Auth | Description |
+|---|---|---|---|---|
+| `GET` | `/search` | `api-search#handle_api` | No | Search Archives |
+| `DELETE` | `/search/cache` | `api-search#clear_cache` | API key | 🔑 Discard Search Cache |
+| `GET` | `/search/ids` | `api-search#handle_api_ids` | No | Search Archive IDs |
+| `GET` | `/search/random` | `api-search#get_random_archives` | No | Search random Archives |
+
+**shinobu** (4 operations)
+
+| Method | Path | Handler | Auth | Description |
+|---|---|---|---|---|
+| `GET` | `/shinobu` | `api-shinobu#shinobu_status` | API key | 🔑 Get Shinobu status |
+| `POST` | `/shinobu/rescan` | `api-shinobu#reset_filemap` | API key | 🔑 Rescan filemap and restart Shinobu |
+| `POST` | `/shinobu/restart` | `api-shinobu#restart_shinobu` | API key | 🔑 Restart Shinobu |
+| `POST` | `/shinobu/stop` | `api-shinobu#stop_shinobu` | API key | 🔑 Stop Shinobu |
+
+**stamps** (6 operations)
+
+| Method | Path | Handler | Auth | Description |
+|---|---|---|---|---|
+| `GET` | `/archives/{id}/stamps` | `api-stamp#get_stamped_pages` | No | Get pages that contain at least one stamp in the archive |
+| `GET` | `/archives/{id}/stamps/{index}` | `api-stamp#get_stamps_by_page` | No | Get the stamps linked to the page |
+| `PUT` | `/archives/{id}/stamps/{index}` | `api-stamp#add_stamp` | API key | 🔑 Add a stamp annotation |
+| `DELETE` | `/stamps/{id}` | `api-stamp#delete_stamp` | API key | 🔑 Delete Stamp |
+| `GET` | `/stamps/{id}` | `api-stamp#get_stamp` | No | Get Stamp |
+| `PUT` | `/stamps/{id}` | `api-stamp#update_stamp` | API key | 🔑 Update Stamp |
+
+**tankoubons** (11 operations)
+
+| Method | Path | Handler | Auth | Description |
+|---|---|---|---|---|
+| `GET` | `/tankoubons` | `api-tankoubon#get_tankoubon_list` | No | Get all Tankoubons |
+| `PUT` | `/tankoubons` | `api-tankoubon#create_tankoubon` | API key | 🔑 Create a Tankoubon |
+| `DELETE` | `/tankoubons/{id}` | `api-tankoubon#delete_tankoubon` | API key | 🔑 Delete Tankoubon |
+| `GET` | `/tankoubons/{id}` | `api-tankoubon#get_tankoubon` | No | Get a single Tankoubon |
+| `PUT` | `/tankoubons/{id}` | `api-tankoubon#update_tankoubon` | API key | 🔑 Update Tankoubon metadata/contents |
+| `GET` | `/tankoubons/{id}/full` | `api-tankoubon#get_tankoubon_full` | No | Get a single Tankoubon with full detail |
+| `PUT` | `/tankoubons/{id}/progress/{page}` | `api-tankoubon#update_tank_progress` | No | Update Tankoubon reading progression |
+| `GET` | `/tankoubons/{id}/thumbnail` | `api-tankoubon#serve_tankoubon_thumbnail` | No | Get Tankoubon thumbnail |
+| `PUT` | `/tankoubons/{id}/thumbnail` | `api-tankoubon#update_tankoubon_thumbnail` | API key | 🔑 Update Tankoubon thumbnail |
+| `DELETE` | `/tankoubons/{id}/{archive}` | `api-tankoubon#remove_from_tankoubon` | API key | 🔑 Remove an Archive from a Tankoubon |
+| `PUT` | `/tankoubons/{id}/{archive}` | `api-tankoubon#add_to_tankoubon` | API key | 🔑 Add an Archive to a Tankoubon |
+
+## Routes outside the OpenAPI spec
+
+Three HTTP routes relevant to API consumers are registered directly in `apply_routes()` in `lib/LANraragi/Utils/Routing.pm` and therefore do not appear in `tools/openapi.yaml` or the table above:
+
+- **`GET /api/info/metrics`** — routed to `serve_metrics()` in `lib/LANraragi/Controller/Api/Metrics.pm`, which renders Prometheus exposition format (`text/plain; version=0.0.4`) built by `get_prometheus_metrics()` in `lib/LANraragi/Model/Metrics.pm`. The route is only registered when the `enablemetrics` setting is on (off by default), and it is mounted under `logged_in_api()`, so it always requires authentication regardless of that setting.
+- **`WebSocket /batch/socket`** — the Batch Tagging websocket, handled by `socket()` in `lib/LANraragi/Controller/Batch.pm`. It is mounted under the session-based web login (`logged_in()` in `lib/LANraragi/Controller/Login.pm`), so it is authenticated by browser session or a disabled password — not by the API key — and keeps an 80-second inactivity timeout.
+- **`GET /search`** — the DataTables endpoint backing the main archive table, handled by `handle_datatables()` in `lib/LANraragi/Controller/Api/Search.pm`. It speaks the DataTables server-side protocol (`draw`, `start`, `length`, `search[value]`, `order[0][column]`, `order[0][dir]`, `columns[i][name]`, `columns[i][search][value]`) plus two saner custom parameters, `grouptanks` (default `true`) and `hidecompleted` (default `false`). A `tags` column search value is normally a category ID, with the magic values `NEW_ONLY` and `UNTAGGED_ONLY` toggling the respective filters. The route shares the CORS and No-Fun Mode wrappers with the OpenAPI router but is otherwise unauthenticated.
+
+## OPDS
+
+The OPDS feed is exposed through regular OpenAPI operations (`GET /api/opds`, `GET /api/opds/{id}`, `GET /api/opds/{id}/pse` — see the *opds* tag above). It serves XML generated by `lib/LANraragi/Model/Opds.pm` and is the main consumer of the `?key=` authentication fallback described earlier, since OPDS readers typically cannot send custom headers. The OPDS flavor is covered in detail in its own chapter.
+
+## Keeping the spec healthy
+
+`tools/openapi.yaml` is the machine-readable contract for everything above. It is linted with `npm run lint-openapi`, which runs `redocly lint tools/openapi.yaml --config=redocly.yml` (see `package.json`); the `redocly.yml` config extends Redocly's `recommended` ruleset with the `operation-4xx-response` rule disabled. Being a standard OpenAPI 3.1 document, the spec can also be fed to any OpenAPI-aware tooling to generate clients or interactive documentation.

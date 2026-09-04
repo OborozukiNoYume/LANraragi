@@ -1,226 +1,174 @@
-# Testing and Build System
+# Build, Test and Deployment
 
-> Analysis Date: 2026-01-11
+> Baseline commit `2094cc1d` (2026-09-04). Facts verified against code — cite-checked at generation time.
 
-This document analyzes LANraragi's test architecture and build/deployment system.
+## Prerequisites
 
----
+- **Perl >= 5.36** and a C toolchain (many CPAN modules are compiled).
+- **Node.js / npm** — used both for the build scripts below and for vendoring frontend libraries.
+- A Redis-compatible server (the containers ship Valkey; local dev can use Redis or Valkey).
 
-## 📊 Testing Architecture Overview
+## Dependencies
 
-### Test Directory Structure
-```
-tests/
-├── mocks.pl                    # Redis Mock implementation
-├── backup.t                    # Backup tests
-├── modules.t                   # Module loading tests
-├── opds.t                      # OPDS tests
-├── plugins.t                   # Plugin system tests
-├── search.t                    # Search tests
-├── tankoubon.t                # Collection tests
-├── LANraragi/
-│   ├── Model/
-│   │   └── Plugins.t
-│   ├── Plugin/Metadata/       # Plugin unit tests (18)
-│   │   ├── Chaika.t
-│   │   ├── EHentai.t
-│   │   └── ...
-│   └── Utils/                  # Utility tests (8)
-│       ├── Archive.t
-│       ├── Tags.t
-│       └── ...
-└── samples/                    # Test data
-    ├── chaika/
-    ├── comicinfo/
-    ├── eh/
-    └── ...
-```
+### Perl (`tools/cpanfile`)
 
----
+Key requirements as pinned in `tools/cpanfile`:
 
-## 🧪 Mock Implementation (`mocks.pl`)
-
-### Redis Mock
-
-Using `Test::MockObject` to mock Redis:
-
-```perl
-my %datamodel = (
-    "LRR_CONFIG" => { "pagesize" => "100", "devmode" => "1" },
-    "SET_1589141306" => {
-        "archives" => '["e69e43e1...","e69e43e1..."]',
-        "name" => "Segata Sanshiro",
-        "search" => ""
-    },
-    "e69e43e1355267f7d32a4f9b7f2fe108d2401ebf" => {
-        "isnew" => "false",
-        "pagecount" => 2,
-        "tags" => "character:segata sanshiro, male:very cool",
-        "title" => "Saturn Backup Cartridge - Japanese Manual"
-    }
-);
-
-my $redis = Test::MockObject->new();
-$redis->mock('keys', sub { grep { /$expr/ } keys %datamodel });
-$redis->mock('hget', sub { $datamodel{$_[1]}{$_[2]} });
-$redis->mock('hgetall', sub { %{$datamodel{$_[1]}} });
-# ...
-$redis->fake_module("Redis", new => sub { $redis });
-```
-
-### Logger Mock
-
-```perl
-sub get_logger_mock {
-    my $mock = Test::MockObject->new();
-    $mock->mock('error', sub { ... });
-    $mock->mock('info', sub { ... });
-    $mock->mock('debug', sub { ... });
-    return $mock;
-}
-```
-
----
-
-## 📦 Perl Dependencies (`cpanfile`)
-
-### Core Dependencies
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `perl` | 5.36.0 | Language version |
+| Dependency | Version | Purpose |
+|---|---|---|
+| `perl` | 5.36.0 | language floor |
+| `Mojolicious` | 9.39 | web framework |
 | `Redis` | 1.995 | Redis client |
-| `Archive::Libarchive::*` | 0.03+ | Archive handling |
-| `Mojolicious` | 9.39 | Web framework |
+| `Minion` | >= 10.31, < 12.0 | job queue |
+| `Minion::Backend::Redis` | 0.002 | Minion backend |
+| `Mojolicious::Plugin::OpenAPI` | 5.11 | REST API (with `JSON::Validator` 5.19) |
+| `Archive::Libarchive::Extract` / `Peek` | 0.03 / 0.04 | archive handling |
+| `Archive::Zip` | 1.68 | zip handling |
+| `Locale::Maketext` / `::Lexicon` | 1.33 / 1.00 | i18n (see the i18n doc) |
+| `CHI` + `CHI::Driver::FastMmap` | 0.61 | cache |
+| `FFI::Platypus` | 2.10 | libvips bindings |
+| `Proc::Simple`, `Parallel::Loops`, `MCE::Loop`, `File::ChangeNotify` | — | Shinobu background worker |
+| `Module::Pluggable` | 5.2 | plugin system |
+| `Crypt::Passphrase` + `::Bcrypt` | 0.023 / 0.009 | password hashing |
 
-### Task Queue
+Test-only deps include `Test::MockObject`, `Test::MockModule`, `Test::Trap`, `Test::Deep`, `App::Prove` and `Test::Harness`.
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `Minion` | 10.31 | Task queue |
-| `Minion::Backend::Redis` | 0.002 | Redis backend |
+### npm (`package.json`)
 
-### Background Services
+`package.json` (version 0.9.81 "Atomica") holds frontend runtime libraries (jQuery, DataTables, Preact + signals, SweetAlert2, Swiper, marked, DOMPurify, es-module-shims, …) and dev tooling (`eslint`, `@redocly/cli`, `esbuild`, `@stylistic/eslint-plugin`).
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `Proc::Simple` | 1.32 | Process management |
-| `MCE::Loop` | 1.901 | Parallel processing |
-| `File::ChangeNotify` | 0.31 | File change monitoring |
+### Key build files
 
-### I18N
+| File | Role |
+|---|---|
+| `tools/cpanfile` | Perl dependency list |
+| `package.json` / `package-lock.json` | npm scripts and frontend dependencies |
+| `tools/install.pl` | dependency installer + frontend vendoring |
+| `lrr.conf` | Redis connection/layout config |
+| `tools/build/docker/Dockerfile` | release container (multi-stage, s6) |
+| `tools/build/docker/Dockerfile-dev`, `docker-compose.yml` | containerized dev environment |
+| `tools/openapi.yaml` + `redocly.yml` | REST API spec and its lint config |
+| `tools/build/windows/` | MSYS2/WiX MSI pipeline and the `Karen` installer project |
+| `tools/build/homebrew/Lanraragi.rb` | macOS Homebrew formula |
+| `.github/workflows/`, `.github/actions/`, `.github/action-run-tests/` | CI/CD pipelines and composite/test actions |
+| `.devcontainer/` | VS Code dev container |
+| `tools/lanraragi-systemd.service` | example systemd unit |
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `Locale::Maketext` | 1.33 | Internationalization |
-| `Locale::Maketext::Lexicon` | 1.00 | PO file support |
+## Common commands
 
----
+All invoked as `npm run <script>`; definitions are in `package.json`:
 
-## 🐳 Docker Build
+| Script | What it does |
+|---|---|
+| `test` | `prove -r -l -v tests/` — full Perl test suite |
+| `lanraragi-installer` | `perl ./tools/install.pl` — dependency installer (modes below) |
+| `start` | `perl ./script/launcher.pl -f ./script/lanraragi` — production start |
+| `dev-server` | `perl ./script/launcher.pl -m -v ./script/lanraragi` — dev start |
+| `dev-server-verbose` | same with `LRR_DEVSERVER=1` exported |
+| `kill-workers` | kills Shinobu/Minion workers and any stray `script/lanraragi` |
+| `lint` | `eslint public/` |
+| `lint-openapi` | `redocly lint tools/openapi.yaml --config=redocly.yml` |
+| `critic` | `perlcritic ./lib/* ./script/* ./tools/install.pl` |
+| `tidy` | runs `perltidy` over all `.pl`/`.pm` files |
+| `docs` | `python3 docs/generate_docs.py` |
+| `docker-build` | `docker build -t difegue/lanraragi -f ./tools/build/docker/Dockerfile .` |
+| `backup-db` | `perl ./script/backup` |
+| `get-version` | `perl ./script/get_version` |
 
-### Dockerfile Key Configuration
+`redocly.yml` extends the `recommended` ruleset and disables `operation-4xx-response`; `eslint.config.mjs` configures the JS lint.
 
-```dockerfile
-FROM alpine:3.20
-EXPOSE 3000
-ENTRYPOINT ["//init"]  # s6-overlay
+Two further utility scripts exist outside npm: `script/get_version` prints the version pair from `package.json` (`0.9.81 - 'Atomica'` style), and `script/backup` dumps the database backup JSON via `LANraragi::Model::Backup` (both are wrapped by npm scripts above).
 
-ENV LRR_UID=9001 LRR_GID=9001
-ENV LRR_NETWORK=http://*:3000
-ENV MOJO_PROXY=1
-ENV MOJO_REVERSE_PROXY=1
-ENV LRR_AUTOFIX_PERMISSIONS=1
+## Installing dependencies
 
-VOLUME [ "/home/koyomi/lanraragi/content" ]
-VOLUME [ "/home/koyomi/lanraragi/thumb" ]
-VOLUME [ "/home/koyomi/lanraragi/database" ]
-VOLUME [ "/home/koyomi/lanraragi/lib/LANraragi/Plugin/Sideloaded" ]
-```
+`tools/install.pl` (reached via `npm run lanraragi-installer [mode]`) supports three modes:
 
-### Docker Environment Variables
+- `install-front` — npm install and vendor frontend assets from `node_modules` into `public/js/vendor/`, `public/css/vendor/` and `public/css/webfonts` (the file lists live in `tools/install.pl` itself, with `esbuild` bundling a few ESM packages).
+- `install-back` — install the Perl dependencies from `tools/cpanfile` via `cpanm`.
+- `install-full` — both; this is the mode for source installs.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LRR_UID` | 9001 | User ID for container |
-| `LRR_GID` | 9001 | Group ID for container |
-| `LRR_NETWORK` | `http://*:3000` | Mojo server bind address |
-| `LRR_AUTOFIX_PERMISSIONS` | 1 | Auto-fix file permissions on start |
-| `MOJO_PROXY` | 1 | Enable HTTP proxy detection |
-| `MOJO_REVERSE_PROXY` | 1 | Enable X-Forwarded-For headers |
-| `S6_KILL_GRACETIME` | 10000 | Wait 10s before SIGKILL |
+The Docker build path uses `tools/build/docker/install-perl-deps.sh`, which bootstraps `local::lib` + `cpanm`, pre-installs `Net::IDN::Encode` manually, then runs `cpanm --installdeps` against `tools/cpanfile` followed by `install-back`.
 
-### Build Optimizations
+## Runtime configuration: `lrr.conf`
 
-1. **Layer copying** - cpanfile before source code for Docker cache
-2. **s6-overlay** - Process management, supports Redis + LRR dual process
-3. **Health check** - Port 3000 check every minute
+The file `lrr.conf` at the repo root is read by `lib/LANraragi/Model/Config.pm` and contains 8 keys:
 
----
+| Key | Meaning |
+|---|---|
+| `redis_address` | Redis host:port (or UNIX socket path) |
+| `redis_password` | optional auth |
+| `redis_database` | archive data + tag indexes (default `0`) |
+| `redis_database_minion` | Minion job queue (default `1`) |
+| `redis_database_config` | config hash (default `2`) |
+| `redis_database_search` | search index/cache (default `3`) |
+| `redis_database_metrics` | metrics data (default `4`) |
+| `base_url_path` | path-prefix deployment |
 
-## ⚙️ Configuration File (`lrr.conf`)
+`lib/LANraragi/Model/Config.pm` also honors environment overrides at startup: `LRR_REDIS_ADDRESS` (replaces `redis_address`), `LRR_DATA_DIRECTORY` and `LRR_THUMB_DIRECTORY` (content/thumb paths), `LRR_FORCE_DEBUG`, `LRR_DEVSERVER` (debug mode) and `LRR_DISABLE_OPENAPI` (skips serving the OpenAPI spec).
 
-```perl
-{
-  redis_address => "127.0.0.1:6379",
-  redis_password => "",
-  redis_database => "0",
-  redis_database_minion => "1",
-  redis_database_config => "2",
-  redis_database_search => "3",
-  base_url_path => "",
-}
-```
+## Docker
 
-| Key | Description |
-|-----|-------------|
-| `redis_address` | Redis server address |
-| `redis_password` | Redis auth password |
-| `redis_database` | Archive data (DB 0) |
-| `redis_database_minion` | Minion jobs (DB 1) |
-| `redis_database_config` | Config storage (DB 2) |
-| `redis_database_search` | Search index (DB 3) |
-| `base_url_path` | URL path prefix |
+`npm run docker-build` builds `tools/build/docker/Dockerfile` — a three-stage build (`base` → `build` → `runtime`) based on `FROM alpine:3.24`. Alpine packages include `valkey`/`valkey-cli` (the in-container datastore), `s6-overlay` (init + supervision), `vips` with jxl/heif/poppler addons (thumbnails), `perl`, `perl-io-socket-ssl`, `perl-local-lib` and `tzdata`. The `build` stage compiles the CPAN dependencies and vendors npm assets; only the results are copied into `runtime`.
 
----
+**Process model** — the container runs two processes under s6:
 
-## 🔄 CI/CD Workflows (GitHub Actions)
+- `redis`: `valkey-server /home/koyomi/lanraragi/tools/build/docker/redis.conf` (`tools/build/docker/s6/s6-rc.d/redis/run`)
+- `lanraragi`: `perl script/launcher.pl -f script/lanraragi` (`tools/build/docker/s6/s6-rc.d/lanraragi/run`)
 
-| Workflow | Purpose |
-|----------|---------|
-| `push-continuous-integration.yml` | Run tests on push |
-| `push-continous-delivery.yml` | Build nightly Docker images |
-| `release-delivery.yml` | Build release Docker images & Windows zip |
-| `push-brewtest.yml` | Test Homebrew formula |
+Both run as user `koyomi` via `s6-setuidgid`. `ENTRYPOINT ["//init"]` (the double slash is the Alpine s6-overlay package convention). On boot, `tools/build/docker/s6/cont-init.d/01-lrr-setup` rewrites the `koyomi` user to `LRR_UID`/`LRR_GID`, verifies the content folder exists, and applies permission fixes.
 
----
+**Environment variables** (defaults from the Dockerfile):
 
-## ✅ Summary
+| Variable | Default | Purpose |
+|---|---|---|
+| `LRR_UID` / `LRR_GID` | `9001` / `9001` | uid/gid mapped onto `koyomi` |
+| `LRR_NETWORK` | `http://*:3000` | Mojo listen string |
+| `LRR_AUTOFIX_PERMISSIONS` | `1` | run permission fixes at boot |
+| `MOJO_PROXY` | `1` | HTTP proxy detection |
+| `MOJO_REVERSE_PROXY` | `1` | trust `X-Forwarded-*` headers |
+| `LC_ALL`/`LANG`/`LANGUAGE` | `en_US.UTF-8` | UTF-8 locale |
+| `S6_KEEP_ENV` | `1` | keep env for services |
+| `S6_BEHAVIOUR_IF_STAGE2_FAILS` | `1` | warn if stage2 scripts fail |
 
-### Test Framework
+**Persistence** — 5 declared volumes: `/home/koyomi/lanraragi/content`, `.../thumb`, `.../database`, `.../lib/LANraragi/Plugin/Sideloaded`, `.../lib/LANraragi/Plugin/Managed`.
 
-| Component | Tool |
-|-----------|------|
-| Test Framework | Perl `Test::More` |
-| Mocking | `Test::MockObject` |
-| Deep Comparison | `Test::Deep` |
-| Test Runner | `prove` |
+`EXPOSE 3000`, and a `HEALTHCHECK` (interval 1m, timeout 10s, 3 retries) that `wget`-spiders `http://127.0.0.1:3000`.
 
-### Build System
+For development there is `tools/build/docker/Dockerfile-dev` plus `tools/build/docker/docker-compose.yml`, which mounts the repo at `/home/koyomi/lanraragi` and links a `valkey:9` service reached via `LRR_REDIS_ADDRESS=redis:6379`.
 
-| Platform | Method |
-|----------|--------|
-| Docker | Alpine-based, s6-overlay |
-| macOS | Homebrew formula |
-| Windows | PowerShell installer |
-| Source | Manual Perl dependency install |
+## CI workflows (`.github/workflows/`)
 
-### Key Files
+| File | Trigger | What it does |
+|---|---|---|
+| `push-continuous-integration.yml` | push, pull_request, manual dispatch | ESLint (Node 22); builds the Docker image and runs the test suite in it via `.github/action-run-tests`; Perl Critic; then Playwright/pytest integration tests from the external `aio-lanraragi` repo against a locally built image |
+| `push-continous-delivery.yml` | push to `dev`, `test-builds`, `actions-testing` | multi-arch Docker build (arm/v6, arm/v7, arm64 via `ubuntu-24.04-arm`, plus amd64 and 386, merged into a single manifest) pushed as the `nightly` tag; also builds a nightly Windows MSI |
+| `release-delivery.yml` | release published | Windows MSI build (below) plus Docker images tagged `latest` |
+| `push-brewtest.yml` | push | on `macos-latest`, builds and tests the bundled Homebrew formula |
 
-| File | Purpose |
-|------|---------|
-| `tools/cpanfile` | Perl dependencies |
-| `tools/build/docker/Dockerfile` | Docker build |
-| `tools/build/homebrew/Lanraragi.rb` | Homebrew formula |
-| `tools/build/windows/build-installer.ps1` | Windows installer |
-| `lrr.conf` | Runtime configuration |
+`.github/action-run-tests` is a small Docker action based on the just-built `lanraragi:test` image (re-adding `perl-dev`, `g++`, `make`, `imagemagick` for tests) whose entrypoint runs `prove -I /home/koyomi/perl5/lib/perl5 -r -l -v tests/`. The multi-arch delivery pipeline uses the composite actions in `.github/actions/docker-builder` and `.github/actions/docker-merge`.
+
+## Test suite
+
+Run locally with `npm test` (`prove -r -l -v tests/`). Layout under `tests/`:
+
+- Top-level `.t` files: `backup.t`, `category.t`, `cbw.t`, `modules.t`, `opds.t`, `plugins.t`, `search.t`, `stamp.t`, `tankoubon.t`.
+- `tests/LANraragi/Utils/` — 12 test files (`Archive.t`, `Generic.t`, `ImageMagickResizer.t`, `Logging.t`, `Metrics.t`, `Path.t`, `Registry.t`, `Routing.t`, `String.t`, `Tags.t`, `Vips.t`, `VipsResizer.t`).
+- `tests/LANraragi/Model/Plugins.t` and `tests/LANraragi/Plugin/Metadata/` — 18 metadata-plugin tests (Chaika, Eze, EHentai, Hitomi, Koromo, …).
+- `tests/mocks.pl` — `setup_redis_mock()` builds a `Test::MockObject` Redis mock around an in-memory data model, so the suite does not need a live Redis server. Tests `require` it before use (see `tests/search.t`, `tests/modules.t`).
+- `tests/samples/` — fixtures consumed by the plugin tests (sample archives, `doc.pdf`, per-source JSON samples).
+
+Running the suite locally only needs the Perl dependencies from `tools/cpanfile` installed (`install-back` or `install-full`) — the Redis mock means no live server is required. In CI the same `prove` command executes inside the `lanraragi:test` container built by the workflow, which is why the Dockerfile must stay test-friendly.
+
+## Windows installer
+
+Two workflows produce the MSI on `windows-2025` with the same pipeline: `release-delivery.yml` (on GitHub releases) and `push-continous-delivery.yml` (nightly). An MSYS2 UCRT64 environment runs `tools/build/windows/install-deps.sh`, `install.sh`, `cleanup.sh` and `create-dist.sh`, then `tools/build/windows/utf8-support.ps1`, and finally `tools/build/windows/build-installer.ps1` produces `tools/build/windows/Karen/Setup/bin/LANraragi.msi` (WiX; the workflows uninstall the chocolatey WiX first), uploaded as the `LANraragi.msi` artifact. The `Karen/` directory holds the installer project; `tools/build/windows/` also contains `redis.conf` and `run.ps1` for local Windows runs.
+
+## Homebrew
+
+`tools/build/homebrew/Lanraragi.rb` is the formula tested by `push-brewtest.yml`: the workflow splices the current commit hash over the `COMMIT_HASH` placeholder, installs the formula `--build-from-source` into a temporary tap, and runs `brew test`.
+
+## Development environment
+
+- **Devcontainers** — `.devcontainer/` provides a Dockerfile and `devcontainer.json` (user `koyomi`, forwarded port 3000, `postCreateCommand` runs `npm run lanraragi-installer install-front` and starts the `valkey-server` service).
+- **Local dev** — `npm run dev-server` (add `-verbose` for `LRR_DEVSERVER` debug); stop stray workers with `npm run kill-workers`.
+- **systemd** — `tools/lanraragi-systemd.service` is a community example unit running `npm start`; it assumes a host Redis and notes it may need adapting.

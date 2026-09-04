@@ -1,335 +1,242 @@
-# API 层架构
+# HTTP API
 
-> **分析文件**: `Routing.pm`, `Api/Archive.pm`, `Api/Search.pm`
+> 基准 commit `2094cc1d`（2026-09-04）。端点总表由 `tools/openapi.yaml`（OpenAPI 3.1）机械提取。事实已对照代码核实。
 
----
+## 概述与路由
 
-## 📊 路由架构概览
+所有 `/api/*` 流量都由 **Mojolicious::Plugin::OpenAPI** 处理，该插件在 `lib/LANraragi/Utils/Routing.pm` 的 `apply_routes()` 中加载，以 `tools/openapi.yaml` 作为其规格。该规格的版本为 OpenAPI 3.1.0，声明了唯一的服务器条目 `https://lrr.tvc-16.science/api`；插件从这个服务器 URL 推导出 `/api` 路径前缀，因此下文参考表中列出的每个操作路径都在 `/api` 之下提供服务（例如 `/archives` 即 `GET /api/archives`）。
 
-### 中间件链
+规格中的每个操作都带有一个 `x-mojo-to` 存根，例如 `api-search#handle_api`，它把操作映射到 `lib/LANraragi/Controller/Api/` 中的控制器方法。在控制器运行之前，插件会依照规格校验传入请求（路径/查询/正文参数）；校验失败由 `lib/LANraragi/Utils/OpenAPI.pm` 中的 `openapi.valid_input` 覆盖转为 400 响应，该覆盖还会在服务器端记录错误。`disableopenapi` 配置标志（在配置 UI 中暴露）会同时绕过请求与响应校验，但保持路由不变。
 
-```mermaid
-graph LR
-    A[Request] --> B{CORS?}
-    B -->|Yes| C[setup_cors]
-    B -->|No| D{No-Fun Mode?}
-    C --> D
-    D -->|Yes| E[logged_in]
-    D -->|No| F[Public Route]
-    E --> G[Handler]
-    F --> G
-```
+在 `apply_routes()` 中，两个横切选项被挂接到 API 路由器周围：
 
-### 路由类型
+- **CORS**（`enablecors`，默认关闭）：路由挂载在 `lib/LANraragi/Controller/Login.pm` 的 `setup_cors()` 之下，后者以 `Access-Control-Allow-Origin: *`、`Access-Control-Allow-Methods: GET, OPTIONS, POST, DELETE, PUT` 应答浏览器预检请求，并显式允许 `Authorization` 头。
+- **No-Fun 模式**（`nofunmode`，默认关闭）：整个 OpenAPI 路由器挂载在 `lib/LANraragi/Controller/Login.pm` 的 `logged_in_api()` 之下，因此*每个*请求——包括规格条目为 `security: []` 的端点——都必须通过认证，否则以 401 失败并返回 `{"error": "This API is protected and requires login or an API Key."}` 正文。同时 Web UI 路由也被锁定在会话登录之后。
 
-| 类型 | 权限 | 用途 |
-|------|------|------|
-| `public_routes` | 无需认证 | 首页、阅读器、登录 |
-| `public_api` | 无需认证 | 公开 API（可被 No-Fun 锁定） |
-| `logged_in` | 需要认证 | 管理页面 |
-| `logged_in_api` | 需要认证 | 管理 API |
+## 认证
 
----
+规格命名了一个安全方案 `api_key`；其回调（定义在 `lib/LANraragi/Utils/Routing.pm` 的插件设置中）委托给 `lib/LANraragi/Utils/Login.pm` 中的 `is_logged_in_api()`。满足以下任一条件请求即通过：
 
-## 🔗 完整 API 端点列表
+1. `Authorization: Bearer {base64(apikey)}` 头，其值为服务器配置页面中所配置原始 API 密钥的 base64 编码。
+2. 包含原始密钥的 `?key={apikey}` 查询参数。代码注释称其为“未写入文档，主要就是为 OPDS 准备的”：无法发送自定义头的阅读器会使用它，`lib/LANraragi/Model/Opds.pm` 会把该值贯穿到目录的分页链接中，使导航保持认证状态。
+3. 已存在的已登录浏览器会话。
+4. 密码保护被完全禁用（`enablepass` 设为 0；默认开启）。
 
-### 档案 API (`/api/archives`)
+在参考表中，**Auth = "No"** 表示该操作在规格中声明为 `security: []`，无需凭据（除非启用了 No-Fun 模式，见上文）；Auth 列为 **"API key"** 的操作走 `api_key` 方案。
 
-| 方法 | 路径 | 认证 | 处理器 | 描述 |
-|------|------|------|--------|------|
-| GET | `/api/archives` | ❌ | `serve_archivelist` | 获取所有档案列表 |
-| GET | `/api/archives/untagged` | ❌ | `serve_untagged_archivelist` | 获取未标记档案 |
-| GET | `/api/archives/:id` | ❌ | `serve_metadata` | [已弃用] 获取元数据 |
-| GET | `/api/archives/:id/metadata` | ❌ | `serve_metadata` | 获取档案元数据 |
-| GET | `/api/archives/:id/thumbnail` | ❌ | `serve_thumbnail` | 获取缩略图 |
-| GET | `/api/archives/:id/download` | ❌ | `serve_file` | 下载原始文件 |
-| GET | `/api/archives/:id/page` | ❌ | `serve_page` | 获取指定页面 |
-| GET | `/api/archives/:id/files` | ❌ | `get_file_list` | 获取文件列表 |
-| GET | `/api/archives/:id/categories` | ❌ | `get_categories` | 获取所属分类 |
-| GET | `/api/archives/:id/tankoubons` | ❌ | `get_tankoubons_file` | 获取所属合集 |
-| PUT | `/api/archives/upload` | ✅ | `create_archive` | 上传新档案 |
-| PUT | `/api/archives/:id/metadata` | ✅ | `update_metadata` | 更新元数据 |
-| PUT | `/api/archives/:id/thumbnail` | ✅ | `update_thumbnail` | 更新缩略图 |
-| PUT | `/api/archives/:id/progress/:page` | ⚙️ | `update_progress` | 更新阅读进度 |
-| POST | `/api/archives/:id/files/thumbnails` | ❌ | `generate_page_thumbnails` | 生成页面缩略图 |
-| DELETE | `/api/archives/:id` | ✅ | `delete_archive` | 删除档案 |
-| DELETE | `/api/archives/:id/isnew` | ❌ | `clear_new` | 清除新标记 |
+有两个进度端点值得一提。`PUT /api/archives/{id}/progress/{page}` 和 `PUT /api/tankoubons/{id}/progress/{page}` 被声明为 `security: []`，但它们的处理器——`lib/LANraragi/Controller/Api/Archive.pm` 中的 `update_progress()` 和 `lib/LANraragi/Controller/Api/Tankoubon.pm` 中的 `update_tank_progress()`——会自行调用 `is_logged_in_api()`，并在 `authprogress` 设置启用时应答 401，这样随意使用的阅读器就无法伪造其他客户端的进度。当服务器端进度跟踪被禁用（`localprogress` 而无 `authprogress`）或档案没有记录页数时，档案处理器还会额外以 400 拒绝更新（可用未写入文档的 `force` 参数绕过）。
 
-> ⚙️ = 可配置 (`enable_authprogress`)
+## 响应格式与错误
 
----
+大多数变更型端点通过 `lib/LANraragi/Utils/Generic.pm` 中的 `render_api_response()` 报告结果，其输出为：
 
-### 搜索 API (`/api/search`)
-
-| 方法 | 路径 | 认证 | 处理器 | 描述 |
-|------|------|------|--------|------|
-| GET | `/search` | ❌ | `handle_datatables` | DataTables 格式（内部） |
-| GET | `/api/search` | ❌ | `handle_api` | 公开搜索 API |
-| GET | `/api/search/random` | ❌ | `get_random_archives` | 获取随机档案 |
-| DELETE | `/api/search/cache` | ✅ | `clear_cache` | 清除搜索缓存 |
-
-#### 搜索 API 参数
-
-| 参数 | 类型 | 默认值 | 描述 |
-|------|------|--------|------|
-| `filter` | string | - | 搜索关键词（语法见下文） |
-| `category` | string | "" | 分类 ID |
-| `start` | int | 0 | 分页偏移。**使用 `-1` 获取完整未分页结果**（自 0.8.2 起） |
-| `sortby` | string | "title" | 排序字段：`title` 或 `lastread`（需启用服务端进度） |
-| `order` | string | "asc" | 排序方向 (asc/desc) |
-| `newonly` | bool | false | 仅新档案 |
-| `untaggedonly` | bool | false | 仅未标记 |
-| `groupby_tanks` | bool | false | 按合集分组 |
-
-#### 搜索查询语法
-
-| 语法 | 描述 | 示例 |
-|------|------|------|
-| `keyword` | 模糊匹配标题/标签 | `fate` |
-| `"..."` | 精确字符串搜索 | `"fate grand order"` |
-| `?` 或 `_` | 单字符通配符 | `fate_go` |
-| `*` 或 `%` | 多字符通配符 | `fate*` |
-| `-keyword` | 排除关键词 | `-yaoi` |
-| `$` 后缀 | 精确标签匹配（忽略 misc） | `artist:rco$` |
-| `namespace:value` | 命名空间搜索 | `artist:wada` |
-| `pages:>N` | 页数过滤 | `pages:>=50` |
-| `read:>N` | 阅读进度过滤 | `read:10` |
-
-#### 搜索响应代码
-
-| 代码 | 描述 |
-|------|------|
-| `200` | 成功返回结果 |
-| `204` | 搜索引擎未初始化（请等待几秒） |
-
-#### 随机搜索参数 (`/api/search/random`)
-
-| 参数 | 类型 | 默认值 | 描述 |
-|------|------|--------|------|
-| `filter` | string | - | 搜索关键词 |
-| `category` | string | "" | 分类 ID |
-| `newonly` | bool | false | 仅新档案 |
-| `untaggedonly` | bool | false | 仅未标记 |
-| `groupby_tanks` | bool | false | 按合集分组 |
-| `count` | int | 5 | 返回的随机档案数量 |
-
----
-
-### 分类 API (`/api/categories`)
-
-| 方法 | 路径 | 认证 | 处理器 |
-|------|------|------|--------|
-| GET | `/api/categories` | ❌ | `get_category_list` |
-| GET | `/api/categories/:id` | ❌ | `get_category` |
-| GET | `/api/categories/bookmark_link` | ❌ | `get_bookmark_link` |
-| PUT | `/api/categories` | ✅ | `create_category` |
-| PUT | `/api/categories/:id` | ✅ | `update_category` |
-| PUT | `/api/categories/:id/:archive` | ✅ | `add_to_category` |
-| PUT | `/api/categories/bookmark_link/:id` | ✅ | `update_bookmark_link` |
-| DELETE | `/api/categories/:id` | ✅ | `delete_category` |
-| DELETE | `/api/categories/:id/:archive` | ✅ | `remove_from_category` |
-| DELETE | `/api/categories/bookmark_link` | ✅ | `remove_bookmark_link` |
-
----
-
-### 单行本 API (`/api/tankoubons`)
-
-| 方法 | 路径 | 认证 | 处理器 |
-|------|------|------|--------|
-| GET | `/api/tankoubons` | ❌ | `get_tankoubon_list` |
-| GET | `/api/tankoubons/:id` | ❌ | `get_tankoubon` |
-| PUT | `/api/tankoubons` | ✅ | `create_tankoubon` |
-| PUT | `/api/tankoubons/:id` | ✅ | `update_tankoubon` |
-| PUT | `/api/tankoubons/:id/:archive` | ✅ | `add_to_tankoubon` |
-| DELETE | `/api/tankoubons/:id` | ✅ | `delete_tankoubon` |
-| DELETE | `/api/tankoubons/:id/:archive` | ✅ | `remove_from_tankoubon` |
-
----
-
-### 数据库 API (`/api/database`)
-
-| 方法 | 路径 | 认证 | 处理器 |
-|------|------|------|--------|
-| GET | `/api/database/backup` | ✅ | `serve_backup` |
-| GET | `/api/database/stats` | ❌ | `serve_tag_stats` |
-| DELETE | `/api/database/isnew` | ✅ | `clear_new_all` |
-| POST | `/api/database/drop` | ✅ | `drop_database` |
-| POST | `/api/database/clean` | ✅ | `clean_database` |
-
----
-
-### 其他 API
-
-#### Shinobu API (`/api/shinobu`)
-| 方法 | 路径 | 认证 | 处理器 |
-|------|------|------|--------|
-| GET | `/api/shinobu` | ✅ | `shinobu_status` |
-| POST | `/api/shinobu/stop` | ✅ | `stop_shinobu` |
-| POST | `/api/shinobu/restart` | ✅ | `restart_shinobu` |
-| POST | `/api/shinobu/rescan` | ✅ | `reset_filemap` |
-
-#### Minion API (`/api/minion`)
-| 方法 | 路径 | 认证 | 处理器 |
-|------|------|------|--------|
-| GET | `/api/minion/:jobid` | ❌ | `minion_job_status` |
-| GET | `/api/minion/:jobid/detail` | ✅ | `minion_job_detail` |
-| POST | `/api/minion/:jobname/queue` | ✅ | `queue_minion_job` |
-
-#### OPDS API (`/api/opds`)
-| 方法 | 路径 | 认证 | 处理器 |
-|------|------|------|--------|
-| GET | `/api/opds` | ❌ | `serve_opds_catalog` |
-| GET | `/api/opds/:id` | ❌ | `serve_opds_item` |
-| GET | `/api/opds/:id/pse` | ❌ | `serve_opds_page` |
-
-#### 杂项 API
-| 方法 | 路径 | 认证 | 处理器 |
-|------|------|------|--------|
-| GET | `/api/info` | ❌ | `serve_serverinfo` |
-| GET | `/api/plugins/:type` | ✅ | `list_plugins` |
-| POST | `/api/plugins/use` | ✅ | `use_plugin_sync` |
-| POST | `/api/plugins/queue` | ✅ | `use_plugin_async` |
-| POST | `/api/download_url` | ✅ | `download_url` |
-| POST | `/api/regen_thumbs` | ✅ | `regen_thumbnails` |
-| DELETE | `/api/tempfolder` | ✅ | `clean_tempfolder` |
-
----
-
-## 🔐 认证模式
-
-### 1. 密码保护（会话）
-```perl
-$public_routes->post('/login')->to('login#check');
-$logged_in = $public_routes->under('/')->to('login#logged_in');
-```
-
-### 2. API 密钥
-```perl
-# Checked in login#logged_in_api
-# Header format: "Bearer " + base64(api_key)
-Authorization: Bearer {base64_encoded_api_key}
-
-# Alternative: query parameter (undocumented, mainly for OPDS)
-?key={api_key}
-```
-
-### 3. No-Fun 模式
-强制所有公开路由需要认证：
-```perl
-if ( $self->LRR_CONF->enable_nofun ) {
-    $public_routes = $logged_in;
-    $public_api = $logged_in_api;
-}
-```
-
----
-
-## 📝 响应格式
-
-### 成功响应
 ```json
-{
-    "operation": "update_metadata",
-    "success": 1,
-    "message": "Updated metadata for \"Title\"!"
-}
+{ "operation": "update_metadata", "success": 1, "error": "", "successMessage": "" }
 ```
 
-### 错误响应
-```json
-{
-    "operation": "update_metadata",
-    "success": 0,
-    "error": "No archive ID specified."
-}
-```
+失败时返回 HTTP 400，带 `success: 0` 以及 `error` 中的消息；成功时返回 HTTP 200，可能附带 `successMessage`。在这一约定之上，OpenAPI 层本身可能以 400（请求校验失败，正文列出问题参数）或 401（安全检查失败）应答，而 No-Fun 模式 / 指标链路会以其自有的 401 JSON 应答，如上所示。
 
-### 列表响应
-```json
-{
-    "recordsTotal": 100,
-    "recordsFiltered": 25,
-    "data": [...]
-}
-```
+## 搜索端点详解
 
----
+四个搜索操作位于 `lib/LANraragi/Controller/Api/Search.pm`；三个查询端点（`GET /api/search`、`GET /api/search/ids`、`GET /api/search/random`）由 `lib/LANraragi/Model/Search.pm` 中的 `do_search()` 支撑，而 `DELETE /api/search/cache` 只调用 `invalidate_cache()`。`GET /api/search` 和 `GET /api/search/ids` 接受相同的参数：
 
-## 🔒 并发锁机制
+| 参数 | 默认值 | 含义 |
+|---|---|---|
+| `filter` | — | 搜索查询；语法见下文 |
+| `category` | — | 限定搜索范围的分类 ID。静态分类会将其档案列表取交集；动态分类会把自身的搜索谓词作为额外的过滤词元加入 |
+| `start` | `0` | 结果列表中的偏移量，按服务器端页面大小（`pagesize`，默认 100）分页。`-1` 返回完整的、未分页的结果集 |
+| `sortby` | `title` | `title`、`lastread` 或**任意标签命名空间**（`artist`、`date_added`、……） |
+| `order` | `asc` | 排序方向，`asc` 或 `desc` |
+| `newonly` | `false` | 限定为标记为新档的档案 |
+| `untaggedonly` | `false` | 限定为无标签档案 |
+| `groupby_tanks` | `true` | 启用时，合集会取代其包含的档案出现在结果中（这也会改变 `recordsTotal`） |
+| `hidecompleted` | `false` | 隐藏进度超过其页数 85% 的档案 |
 
-使用 `exec_with_lock` 防止并发写入：
+响应携带 `{recordsTotal, recordsFiltered, data}`；对 `/api/search`，`data` 数组保存完整的档案元数据 JSON 对象；对 `/api/search/ids`，只保存档案 ID。如果搜索引擎尚未初始化（搜索 Redis 数据库中没有 `LAST_JOB_TIME` 标记），两个端点都会返回 **HTTP 204** 而非结果。
 
-```perl
-exec_with_lock( $self, $redis, "archive-write:$id", "operation", $id, sub {
-    # Critical section code
-});
-```
+排序说明，来自 `lib/LANraragi/Model/Search.pm` 中的 `sort_results()`：
 
-**锁类型：**
-- `upload:{filename}` - 上传锁
-- `archive-write:{id}` - 档案修改锁
+- 按任意命名空间排序会对结果分区：带有该命名空间的档案（按其值自然排序）在前，没有该命名空间的被排到末尾。对 `date_added`/`timestamp`，合集从其成员档案继承日期。
+- `lastread` 需要服务器端进度跟踪，并会静默丢弃从未阅读过的 ID。
 
----
+`GET /api/search/random` 接受 `filter`、`category`、`newonly`、`untaggedonly`、`groupby_tanks`、`hidecompleted` 以及 `count`（默认 5）；它从完整过滤集中随机抽取条目并返回完整的元数据对象。每个查询都缓存在搜索 Redis 数据库中（`LRR_SEARCHCACHE`，包括对倒序排序的复用）；`DELETE /api/search/cache` 映射到 `lib/LANraragi/Utils/Database.pm` 中的 `invalidate_cache()` 来丢弃缓存。
 
-## 🔍 搜索引擎深度分析
+### 过滤器语法
 
-### 搜索流程
+`filter` 字符串由 `lib/LANraragi/Model/Search.pm` 中的 `compute_search_filter()` 解析；下面的各种情形由 `tests/search.t` 覆盖。
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Controller as Api/Search
-    participant Model as Model/Search
-    participant Cache as Redis Cache
-    participant Index as Redis Index
-    
-    Client->>Controller: GET /api/search?filter=...
-    Controller->>Model: do_search(params)
-    Model->>Cache: check_cache(cachekey)
-    alt Cache Hit
-        Cache-->>Model: frozen data
-        Model->>Model: thaw(data)
-    else Cache Miss
-        Model->>Index: search_uncached()
-        Model->>Cache: nfreeze + hset
-    end
-    Model-->>Controller: (total, filtered, ids[])
-    Controller->>Controller: get_archive_json_multi(ids)
-    Controller-->>Client: JSON response
-```
+- 词元以逗号分隔，按 AND 逻辑组合。
+- 裸关键字模糊匹配标签**和**标题（子串匹配）。
+- `namespace:value` 将匹配限定到该标签命名空间；不带命名空间时，词元匹配任意命名空间中的标签。
+- 双引号（`"male:very cool"`）使词元成为精确字符串匹配，并允许其中包含空格。
+- 前导 `-` 排除其后的词元（`-character:ereshkigal`）；它必须位于引号*之外*才有效。
+- 尾部 `$` 强制精确标签匹配（`character:segata$`）。
+- `?` 或 `_` 匹配任意单个字符；`*` 或 `%` 匹配任意字符序列。两对可以互换。
+- `pages:` 和 `read:` 分别与页数和已读页数计数器比较，接受 `=`（隐含）、`>`、`>=`、`<`、`<=`——例如 `pages:>150`、`read:<11, read:>9`。
+- 词元在匹配前会转为小写。
 
-### 缓存机制
+## 端点参考
 
-```perl
-# Cache Key Format
-$cachekey = "$category_id-$filter-$sortkey-$sortorder-$newonly-$untaggedonly-$grouptanks"
+64 条路径上的 87 个操作，按规格标签分组。路径相对于 `/api` 前缀；处理器是相对于 `lib/LANraragi/Controller/Api/` 解析的 `x-mojo-to` 值。Auth 为 "API key" 对应 `api_key` 安全方案，"No" 对应 `security: []`。
+**archives**（20 个操作）
 
-# Serialization: Storable (nfreeze/thaw)
-$redis->hset( "LRR_SEARCHCACHE", $cachekey, nfreeze \@filtered );
-```
+| 方法 | 路径 | 处理器 | Auth | 描述 |
+|---|---|---|---|---|
+| `GET` | `/archives` | `api-archive#serve_archivelist` | No | 获取全部档案 |
+| `GET` | `/archives/untagged` | `api-archive#serve_untagged_archivelist` | No | 获取全部无标签档案 |
+| `PUT` | `/archives/upload` | `api-archive#create_archive` | API key | 🔑 上传档案 |
+| `DELETE` | `/archives/{id}` | `api-archive#delete_archive` | API key | 🔑 删除档案 |
+| `GET` | `/archives/{id}` | `api-archive#serve_metadata` | No | 获取档案元数据（已弃用） |
+| `GET` | `/archives/{id}/categories` | `api-archive#get_categories` | No | 获取档案的分类 |
+| `GET` | `/archives/{id}/download` | `api-archive#serve_file` | No | 下载档案 |
+| `GET` | `/archives/{id}/files` | `api-archive#get_file_list` | No | 解压档案 |
+| `POST` | `/archives/{id}/files/thumbnails` | `api-archive#generate_page_thumbnails` | No | 提取页面缩略图 |
+| `DELETE` | `/archives/{id}/isnew` | `api-archive#clear_new` | No | 清除档案的新档标志 |
+| `PUT` | `/archives/{id}/isnew` | `api-archive#add_new` | API key | 🔑 设置档案的新档标志 |
+| `GET` | `/archives/{id}/metadata` | `api-archive#serve_metadata` | No | 获取档案元数据 |
+| `PUT` | `/archives/{id}/metadata` | `api-archive#update_metadata` | API key | 🔑 更新档案元数据 |
+| `GET` | `/archives/{id}/page` | `api-archive#serve_page` | No | 获取档案的某一页 |
+| `PUT` | `/archives/{id}/progress/{page}` | `api-archive#update_progress` | No | 更新阅读进度 |
+| `GET` | `/archives/{id}/tankoubons` | `api-tankoubon#get_tankoubons_file` | No | 获取档案所属合集 |
+| `GET` | `/archives/{id}/thumbnail` | `api-archive#serve_thumbnail` | No | 获取档案缩略图 |
+| `PUT` | `/archives/{id}/thumbnail` | `api-archive#update_thumbnail` | API key | 🔑 更新档案缩略图 |
+| `DELETE` | `/archives/{id}/toc` | `api-archive#remove_toc` | API key | 🔑 从档案目录中移除条目 |
+| `PUT` | `/archives/{id}/toc` | `api-archive#add_toc` | API key | 🔑 向档案目录添加条目 |
 
-**缓存失效：**
-- 调用 `invalidate_cache()` 删除 `LRR_SEARCHCACHE`
-- `lastread` 排序不使用缓存
+**categories**（10 个操作）
 
-### 索引利用
+| 方法 | 路径 | 处理器 | Auth | 描述 |
+|---|---|---|---|---|
+| `GET` | `/categories` | `api-category#get_category_list` | No | 获取全部分类 |
+| `PUT` | `/categories` | `api-category#create_category` | API key | 🔑 创建分类 |
+| `DELETE` | `/categories/bookmark_link` | `api-category#remove_bookmark_link` | API key | 🔑 禁用书签功能 |
+| `GET` | `/categories/bookmark_link` | `api-category#get_bookmark_link` | No | 获取书签关联的分类 |
+| `PUT` | `/categories/bookmark_link/{id}` | `api-category#update_bookmark_link` | API key | 🔑 更新书签关联的分类 |
+| `DELETE` | `/categories/{id}` | `api-category#delete_category` | API key | 🔑 删除分类 |
+| `GET` | `/categories/{id}` | `api-category#get_category` | No | 获取单个分类 |
+| `PUT` | `/categories/{id}` | `api-category#update_category` | API key | 🔑 更新分类 |
+| `DELETE` | `/categories/{id}/{archive}` | `api-category#remove_from_category` | API key | 🔑 从分类中移除档案 |
+| `PUT` | `/categories/{id}/{archive}` | `api-category#add_to_category` | API key | 🔑 向分类添加档案 |
 
-| 排序/过滤 | 使用的索引 |
-|-----------|-----------|
-| 标题搜索 | `LRR_TITLES` (Sorted Set ZSCAN) |
-| 标签搜索 | `INDEX_{tag}` (Set SMEMBERS) |
-| 新档案 | `LRR_NEW` (Set) |
-| 未标记 | `LRR_UNTAGGED` (Set) |
-| 合集分组 | `LRR_TANKGROUPED` (Set) |
+**database**（8 个操作）
 
----
+| 方法 | 路径 | 处理器 | Auth | 描述 |
+|---|---|---|---|---|
+| `GET` | `/database/backup` | `api-database#serve_backup` | API key | 🔑 获取备份 JSON |
+| `POST` | `/database/backup` | `api-database#queue_backup` | API key | 🔑 将备份任务入队 |
+| `GET` | `/database/backup/{jobid}` | `api-database#download_backup` | API key | 🔑 从已完成任务下载备份 JSON |
+| `POST` | `/database/clean` | `api-database#clean_database` | API key | 🔑 清理数据库 |
+| `POST` | `/database/drop` | `api-database#drop_database` | API key | 🔑 清空数据库 |
+| `DELETE` | `/database/isnew` | `api-database#clear_new_all` | API key | 🔑 清除全部“新档”标志 |
+| `POST` | `/database/restore` | `api-database#queue_restore` | API key | 🔑 将恢复任务入队 |
+| `GET` | `/database/stats` | `api-database#serve_tag_stats` | No | 获取统计信息 |
 
-## ✅ 总结
+**minion**（3 个操作）
 
-| 发现 | 详情 |
-|------|------|
-| **端点总数** | 60+ (API + 页面) |
-| **认证模式** | 会话 + API 密钥 + No-Fun |
-| **响应格式** | JSON (含 operation/success) |
-| **并发控制** | Redis 分布式锁 |
-| **特殊功能** | OPDS, WebSocket (批量) |
+| 方法 | 路径 | 处理器 | Auth | 描述 |
+|---|---|---|---|---|
+| `GET` | `/minion/{jobid}` | `api-minion#minion_job_status` | No | 获取 Minion 任务的基本状态 |
+| `GET` | `/minion/{jobid}/detail` | `api-minion#minion_job_detail` | API key | 🔑 获取 Minion 任务的完整状态 |
+| `POST` | `/minion/{jobname}/queue` | `api-minion#queue_minion_job` | API key | 🔑 将 Minion 任务入队 |
+
+**misc**（4 个操作）
+
+| 方法 | 路径 | 处理器 | Auth | 描述 |
+|---|---|---|---|---|
+| `POST` | `/download_url` | `api-other#download_url` | API key | 将 URL 下载入队 |
+| `GET` | `/info` | `api-other#serve_serverinfo` | No | 获取服务器信息 |
+| `POST` | `/regen_thumbs` | `api-other#regen_thumbnails` | API key | 重新生成缩略图 |
+| `DELETE` | `/tempfolder` | `api-other#clean_tempfolder` | API key | 清理临时文件夹 |
+
+**opds**（3 个操作）
+
+| 方法 | 路径 | 处理器 | Auth | 描述 |
+|---|---|---|---|---|
+| `GET` | `/opds` | `api-other#serve_opds_catalog` | No | 获取 OPDS 目录 |
+| `GET` | `/opds/{id}` | `api-other#serve_opds_item` | No | 通过 OPDS 获取特定档案 |
+| `GET` | `/opds/{id}/pse` | `api-other#serve_opds_page` | No | OPDS-PSE |
+
+**plugins**（5 个操作）
+
+| 方法 | 路径 | 处理器 | Auth | 描述 |
+|---|---|---|---|---|
+| `POST` | `/plugins/install` | `api-plugins#install_plugin` | API key | 🔑 安装插件 |
+| `DELETE` | `/plugins/installed/{plugin_namespace}` | `api-plugins#uninstall_plugin` | API key | 🔑 卸载插件 |
+| `POST` | `/plugins/queue` | `api-other#use_plugin_async` | API key | 🔑 异步使用插件 |
+| `POST` | `/plugins/use` | `api-other#use_plugin_sync` | API key | 🔑 使用插件 |
+| `GET` | `/plugins/{type}` | `api-other#list_plugins` | API key | 🔑 列出可用插件 |
+
+**registries**（9 个操作）
+
+| 方法 | 路径 | 处理器 | Auth | 描述 |
+|---|---|---|---|---|
+| `GET` | `/registries` | `api-registry#list_registries` | API key | 🔑 列出注册表 |
+| `POST` | `/registries` | `api-registry#create_registry` | API key | 🔑 创建注册表 |
+| `DELETE` | `/registries/default_registry` | `api-registry#remove_default_registry` | API key | 🔑 清除默认仓库 |
+| `GET` | `/registries/default_registry` | `api-registry#get_default_registry` | API key | 获取默认仓库 |
+| `PUT` | `/registries/default_registry/{id}` | `api-registry#update_default_registry` | API key | 🔑 设置默认仓库 |
+| `DELETE` | `/registries/{id}` | `api-registry#delete_registry` | API key | 🔑 删除注册表 |
+| `GET` | `/registries/{id}` | `api-registry#get_registry` | API key | 🔑 获取注册表 |
+| `PUT` | `/registries/{id}` | `api-registry#update_registry` | API key | 🔑 更新注册表 |
+| `POST` | `/registries/{id}/refresh` | `api-registry#refresh_registry` | API key | 🔑 刷新注册表索引 |
+
+**search**（4 个操作）
+
+| 方法 | 路径 | 处理器 | Auth | 描述 |
+|---|---|---|---|---|
+| `GET` | `/search` | `api-search#handle_api` | No | 搜索档案 |
+| `DELETE` | `/search/cache` | `api-search#clear_cache` | API key | 🔑 丢弃搜索缓存 |
+| `GET` | `/search/ids` | `api-search#handle_api_ids` | No | 搜索档案 ID |
+| `GET` | `/search/random` | `api-search#get_random_archives` | No | 随机搜索档案 |
+
+**shinobu**（4 个操作）
+
+| 方法 | 路径 | 处理器 | Auth | 描述 |
+|---|---|---|---|---|
+| `GET` | `/shinobu` | `api-shinobu#shinobu_status` | API key | 🔑 获取 Shinobu 状态 |
+| `POST` | `/shinobu/rescan` | `api-shinobu#reset_filemap` | API key | 🔑 重新扫描文件映射并重启 Shinobu |
+| `POST` | `/shinobu/restart` | `api-shinobu#restart_shinobu` | API key | 🔑 重启 Shinobu |
+| `POST` | `/shinobu/stop` | `api-shinobu#stop_shinobu` | API key | 🔑 停止 Shinobu |
+
+**stamps**（6 个操作）
+
+| 方法 | 路径 | 处理器 | Auth | 描述 |
+|---|---|---|---|---|
+| `GET` | `/archives/{id}/stamps` | `api-stamp#get_stamped_pages` | No | 获取档案中至少包含一个图章的页面 |
+| `GET` | `/archives/{id}/stamps/{index}` | `api-stamp#get_stamps_by_page` | No | 获取与该页面关联的图章 |
+| `PUT` | `/archives/{id}/stamps/{index}` | `api-stamp#add_stamp` | API key | 🔑 添加图章注解 |
+| `DELETE` | `/stamps/{id}` | `api-stamp#delete_stamp` | API key | 🔑 删除图章 |
+| `GET` | `/stamps/{id}` | `api-stamp#get_stamp` | No | 获取图章 |
+| `PUT` | `/stamps/{id}` | `api-stamp#update_stamp` | API key | 🔑 更新图章 |
+
+**tankoubons**（11 个操作）
+
+| 方法 | 路径 | 处理器 | Auth | 描述 |
+|---|---|---|---|---|
+| `GET` | `/tankoubons` | `api-tankoubon#get_tankoubon_list` | No | 获取全部合集 |
+| `PUT` | `/tankoubons` | `api-tankoubon#create_tankoubon` | API key | 🔑 创建合集 |
+| `DELETE` | `/tankoubons/{id}` | `api-tankoubon#delete_tankoubon` | API key | 🔑 删除合集 |
+| `GET` | `/tankoubons/{id}` | `api-tankoubon#get_tankoubon` | No | 获取单个合集 |
+| `PUT` | `/tankoubons/{id}` | `api-tankoubon#update_tankoubon` | API key | 🔑 更新合集的元数据/内容 |
+| `GET` | `/tankoubons/{id}/full` | `api-tankoubon#get_tankoubon_full` | No | 获取单个合集的完整细节 |
+| `PUT` | `/tankoubons/{id}/progress/{page}` | `api-tankoubon#update_tank_progress` | No | 更新合集阅读进度 |
+| `GET` | `/tankoubons/{id}/thumbnail` | `api-tankoubon#serve_tankoubon_thumbnail` | No | 获取合集缩略图 |
+| `PUT` | `/tankoubons/{id}/thumbnail` | `api-tankoubon#update_tankoubon_thumbnail` | API key | 🔑 更新合集缩略图 |
+| `DELETE` | `/tankoubons/{id}/{archive}` | `api-tankoubon#remove_from_tankoubon` | API key | 🔑 从合集中移除档案 |
+| `PUT` | `/tankoubons/{id}/{archive}` | `api-tankoubon#add_to_tankoubon` | API key | 🔑 向合集添加档案 |
+
+## OpenAPI 规格之外的路由
+
+三条与 API 使用者相关的 HTTP 路由直接注册在 `lib/LANraragi/Utils/Routing.pm` 的 `apply_routes()` 中，因此不会出现在 `tools/openapi.yaml` 或上表中：
+
+- **`GET /api/info/metrics`** —— 路由到 `lib/LANraragi/Controller/Api/Metrics.pm` 中的 `serve_metrics()`，后者渲染由 `lib/LANraragi/Model/Metrics.pm` 中的 `get_prometheus_metrics()` 构建的 Prometheus 展示格式（`text/plain; version=0.0.4`）。该路由只在 `enablemetrics` 设置开启（默认关闭）时注册，并且挂载在 `logged_in_api()` 之下，因此无论该设置如何，始终要求认证。
+- **`WebSocket /batch/socket`** —— 批量打标签 websocket，由 `lib/LANraragi/Controller/Batch.pm` 中的 `socket()` 处理。它挂载在基于会话的 Web 登录（`lib/LANraragi/Controller/Login.pm` 中的 `logged_in()`）之下，因此通过浏览器会话或被禁用的密码认证——而非 API 密钥——并保持 80 秒的不活动超时。
+- **`GET /search`** —— 支撑主档案表的 DataTables 端点，由 `lib/LANraragi/Controller/Api/Search.pm` 中的 `handle_datatables()` 处理。它使用 DataTables 服务器端协议（`draw`、`start`、`length`、`search[value]`、`order[0][column]`、`order[0][dir]`、`columns[i][name]`、`columns[i][search][value]`），外加两个更合理的自定义参数 `grouptanks`（默认 `true`）和 `hidecompleted`（默认 `false`）。`tags` 列的搜索值通常是分类 ID，魔法值 `NEW_ONLY` 和 `UNTAGGED_ONLY` 分别切换相应的过滤器。该路由与 OpenAPI 路由器共享 CORS 和 No-Fun 模式包装，但在其他方面无需认证。
+
+## OPDS
+
+OPDS 订阅源通过常规 OpenAPI 操作暴露（`GET /api/opds`、`GET /api/opds/{id}`、`GET /api/opds/{id}/pse`——见上文 *opds* 标签）。它提供由 `lib/LANraragi/Model/Opds.pm` 生成的 XML，并且是前文所述 `?key=` 认证回退的主要使用者，因为 OPDS 阅读器通常无法发送自定义头。OPDS 的具体风格在其专属章节中有详细介绍。
+
+## 保持规格健康
+
+`tools/openapi.yaml` 是上述一切的机器可读契约。它通过 `npm run lint-openapi` 进行 lint，该命令运行 `redocly lint tools/openapi.yaml --config=redocly.yml`（见 `package.json`）；`redocly.yml` 配置扩展了 Redocly 的 `recommended` 规则集，并禁用了 `operation-4xx-response` 规则。作为标准的 OpenAPI 3.1 文档，该规格也可以交给任何支持 OpenAPI 的工具来生成客户端或交互式文档。

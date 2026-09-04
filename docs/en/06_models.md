@@ -1,509 +1,206 @@
-# Model Layer Deep Analysis
-
-> Analysis Date: 2026-01-11
-
-This document provides detailed analysis of the Model layer business logic.
-
----
-
-## 📊 Module Overview
-
-| Module | Lines | Main Function |
-|--------|-------|---------------|
-| `Reader.pm` | 86 | Image resizing, page list generation |
-| `Upload.pm` | 268 | File upload handling, duplicate detection, auto-plugin execution |
-| `Backup.pm` | 183 | Database backup/restore (JSON format) |
-| `Opds.pm` | 161 | OPDS Catalog generation |
-| `Search.pm` | 524 | **Core** Search engine |
-| `Tankoubon.pm` | 527 | Collections (ordered archive sets) |
-| `Stats.pm` | ~300 | Statistics calculation |
-| `Category.pm` | ~350 | Category management |
-
----
-
-## 🔍 Search.pm - Core Search Engine
-
-### Core Functions
-
-#### `do_search($filter, $category_id, $start, $sortkey, $sortorder, $newonly, $untaggedonly, $grouptanks)`
-
-Main search entry point:
-
-```perl
-sub do_search {
-    # 1. Check search cache
-    my ($cachehit, @filtered) = check_cache($cachekey, $cachekey_inv);
-    
-    # 2. If cache miss, execute full search
-    unless ($cachehit && $sortkey ne "lastread") {
-        @filtered = search_uncached(...);
-        $redis->hset("LRR_SEARCHCACHE", $cachekey, nfreeze \@filtered);
-    }
-    
-    # 3. Return paginated results
-    return ($total, $#filtered + 1, @filtered[$start..$end]);
-}
-```
-
-### Search Syntax Parsing (`compute_search_filter`)
-
-| Syntax | Meaning | Example |
-|--------|---------|---------|
-| `keyword` | Fuzzy match title/tags | `fate` |
-| `"exact"` | Exact match | `"fate grand order"` |
-| `-keyword` | Exclude | `-yaoi` |
-| `namespace:value` | Namespace search | `artist:wada` |
-| `pages:>20` | Page count filter | `pages:>=50` |
-| `read:>0` | Read page count | `read:10` |
-| `?` `_` | Single character wildcard | `fate_go` |
-| `*` `%` | Multi-character wildcard | `fate*` |
-
-### Search Flow
-
-```mermaid
-flowchart TD
-    A[Search Request] --> B{Cache Hit?}
-    B -->|Yes| C[Return Cache]
-    B -->|No| D[Parse Search Terms]
-    D --> E[Get Initial ID Set]
-    E --> F{Static Category?}
-    F -->|Yes| G[Intersect with Category Archives]
-    F -->|No| H[Add to Search Conditions]
-    G --> I[Apply newonly/untagged Filter]
-    H --> I
-    I --> J[Iterate Search Tokens]
-    J --> K{Exact Match?}
-    K -->|Yes| L[Query INDEX_tag]
-    K -->|No| M[Query INDEX_*tag*]
-    L --> N[Title Fuzzy Search]
-    M --> N
-    N --> O[Result Intersection/Difference]
-    O --> P[Sort]
-    P --> Q[Cache Results]
-    Q --> R[Return Paginated]
-```
-
-### Sort Optimization (Lua Script)
-
-```perl
-# Use Lua to batch fetch data, reduce network requests
-my $script = <<'LUA';
-local result = {}
-for i=1,#ARGV do
-    local id = ARGV[i]
-    local value = redis.call('HGET', id, 'lastreadtime')
-    result[i] = {id, value or "0"}
-end
-return cjson.encode(result)
-LUA
-```
-
----
-
-## 📚 Tankoubon.pm - Collection System
-
-### Concept
-
-Tankoubon (単行本) is an ordered archive collection, similar to a "playlist".
-
-### Redis Storage Structure
-
-```
-TANK_1589141306 (Sorted Set):
-  score 0: "name_Collection Name"    # Metadata
-  score -1: "summary_Description"
-  score -2: "tags_Tags"
-  score 1: "archive_id_1"           # Archives in order
-  score 2: "archive_id_2"
-  score 3: "archive_id_3"
-```
-
-### Core Functions
-
-| Function | Purpose |
-|----------|---------|
-| `create_tankoubon($name, $tank_id)` | Create collection |
-| `get_tankoubon($tank_id, $fulldata, $page)` | Get collection details |
-| `add_to_tankoubon($tank_id, $arc_id)` | Add archive |
-| `remove_from_tankoubon($tank_id, $arc_id)` | Remove archive (auto-reorder) |
-| `update_archive_list($tank_id, $data)` | Batch update order |
-
-### Tank Grouping (Search Aggregation)
-
-When Tank Grouping is enabled:
-- Archives in collection are hidden from main search
-- Collection appears as a whole in search results
-- Uses `LRR_TANKGROUPED` Redis Set for tracking
-
-## 🔧 Reader.pm - Reader Model
-
-### Core Functions
-
-#### `resize_image($content, $quality, $threshold)`
-On-demand image compression to save bandwidth:
-
-```perl
-sub resize_image ( $content, $quality, $threshold ) {
-    # Only compress if file size exceeds threshold
-    if ( ( length($content) / 1024 ) > $threshold ) {
-        return $resampler->resize_page( $content, $quality, "jpg" );
-    }
-    return $content;
-}
-```
-
-**Parameters:**
-- `$content`: Image binary data
-- `$quality`: JPEG quality (0-100)
-- `$threshold`: File size threshold to trigger compression (KB)
-
-#### `build_reader_JSON($self, $id, $force)`
-Build reader page list:
-
-```perl
-sub build_reader_JSON ( $self, $id, $force ) {
-    my $archive = get_archive_path( $redis, $id );
-    my @images = get_filelist($archive, $id);
-    
-    foreach my $imgpath (@images) {
-        # URI encoding
-        $imgpath = uri_escape_utf8(redis_decode($imgpath));
-        $imgpath =~ s!%2F!/!g;  # Preserve slashes
-        
-        # Build API URL
-        push @images_browser, "/api/archives/$id/page?path=$imgpath";
-    }
-    
-    # Update page count
-    $redis->hset( $id, "pagecount", scalar @images );
-    
-    return { pages => \@images_browser };
-}
-```
-
-**Return Format:**
-```json
-{
-  "pages": [
-    "/api/archives/{id}/page?path=001.jpg",
-    "/api/archives/{id}/page?path=002.jpg"
-  ]
-}
-```
-
----
-
-## 📤 Upload.pm - Upload Processing Model
-
-### Core Functions
-
-#### `handle_incoming_file($tempfile, $catid, $tags, $title, $summary)`
-
-Complete upload processing flow:
-
-```mermaid
-flowchart TD
-    A[Receive File] --> B{Is Archive?}
-    B -->|No| C[Return 415]
-    B -->|Yes| D[Compute ID]
-    D --> E{Already Exists?}
-    E -->|Yes and No Replace| F[Return 409]
-    E -->|Yes and Replace| G[Delete Old Archive]
-    E -->|No| H[Add to Redis]
-    G --> H
-    H --> I[Set tags/title/summary]
-    I --> J[Move File to Content Dir]
-    J --> K[Add timestamp/pagecount/size]
-    K --> L[Generate Thumbnail]
-    L --> M[Execute autoplugin]
-    M --> N{Category Specified?}
-    N -->|Yes| O[Add to Category]
-    N -->|No| P[Return Success]
-    O --> P
-```
-
-**Key Processing Steps:**
-
-1. **File Validation**
-```perl
-unless ( is_archive($filename) ) {
-    return ( 415, "deadbeef", $filename, "Unsupported File Extension" );
-}
-```
-
-2. **ID Computation** (based on file content SHA1)
-```perl
-my $id = compute_id($tempfile);
-```
-
-3. **Duplicate Detection**
-```perl
-my $isdupe = $redis->exists($id) && -e get_archive_path($redis, $id);
-if ( (-e $output_file || $isdupe) && !$replace_dupe ) {
-    return ( 409, $id, $filename, "This file already exists" );
-}
-```
-
-4. **Two-Phase File Move** (prevent Shinobu early detection)
-```perl
-move_path( $tempfile, $output_file . ".upload" );  # First move as .upload
-rename_path( $output_file . ".upload", $output_file );  # Then rename to trigger update
-```
-
-5. **Source URL Indexing**
-```perl
-if ( $t =~ /source:(.*)/i ) {
-    $redis_search->hset( "LRR_URLMAP", trim_url($url), $id );
-}
-```
-
-#### `download_url($url, $ua)`
-
-Remote file download:
-
-```perl
-sub download_url ( $url, $ua ) {
-    my $tx = $ua->max_response_size(0)->max_redirects(5)->get($url);
-    
-    # Content-Disposition parsing
-    if ( $content_disp =~ /filename="(.*)"/ ) {
-        $filename = $1;
-    } elsif ( $content_disp =~ /filename\*=UTF-8''(.*)/ ) {
-        $filename = uri_unescape($1);  # RFC 5987
-    }
-    
-    # Windows illegal character cleanup
-    $filename =~ s@[\\/:\\"*?<>|]+@@g;
-    
-    # Filename length limit (CryptoFS: 143, Normal: 255)
-    while ( get_bytelength($filename . $ext . ".upload") > $byte_limit ) {
-        $filename = substr($filename, 0, -1);
-    }
-    
-    $tx->result->save_to("$tempdir/$filename");
-    return "$tempdir/$filename";
-}
-```
-
----
-
-## 💾 Backup.pm - Backup/Restore Model
-
-### Backup JSON Structure
-
-```json
-{
-  "archives": [
-    {
-      "arcid": "abc123...",
-      "title": "Comic Title",
-      "tags": "artist:name, parody:series",
-      "summary": "Description",
-      "thumbhash": "def456...",
-      "filename": "file.zip"
-    }
-  ],
-  "categories": [
-    {
-      "catid": "SET_123456",
-      "name": "Favorites",
-      "search": "",
-      "archives": ["abc123", "def456"]
-    }
-  ],
-  "tankoubons": [
-    {
-      "tankid": "TANK_789012",
-      "name": "Collection Name",
-      "archives": ["abc123", "def456"]
-    }
-  ]
-}
-```
-
-### `build_backup_JSON()`
-
-```perl
-# Backup categories
-my @cats = $redis->keys('SET_??????????');
-foreach my $key (@cats) {
-    my %data = $redis->hgetall($key);
-    push @{$backup{categories}}, {
-        catid => $key,
-        name => redis_decode($data{name}),
-        archives => decode_json($data{archives})
-    };
-}
-
-# Backup collections
-my @tanks = LANraragi::Model::Tankoubon::get_tankoubon_list(-1);
-foreach my $tank (@tanks) {
-    push @{$backup{tankoubons}}, {...};
-}
-
-# Backup archive metadata
-my @keys = $redis->keys('?' x 40);  # 40 chars = Archive ID
-foreach my $id (@keys) {
-    push @{$backup{archives}}, {
-        arcid => $id,
-        title => redis_decode($hash{title}),
-        tags => redis_decode($hash{tags}),
-        ...
-    };
-}
-```
-
-### `restore_from_JSON($json)`
-
-Restore flow:
-1. Call `clean_database()` to clean invalid entries
-2. Restore Categories (create + add members)
-3. Restore Tankoubons
-4. Restore Archives metadata (only update existing)
-5. Call `invalidate_cache()` to refresh cache
-
----
-
-## 📚 Opds.pm - OPDS Protocol Support
-
-### OPDS Output Structure
-
-```xml
-<feed xmlns="http://www.w3.org/2005/Atom">
-  <title>{server_title}</title>
-  <entry>
-    <title>{archive_title}</title>
-    <author><name>{artist}</name></author>
-    <dc:language>{language}</dc:language>
-    <updated>{lastreaddate}</updated>
-    <link rel="http://opds-spec.org/acquisition" 
-          type="{mimetype}" 
-          href="/api/archives/{id}/download"/>
-    <link rel="http://opds-spec.org/image" 
-          type="image/jpeg" 
-          href="/api/archives/{id}/thumbnail"/>
-  </entry>
-</feed>
-```
-
-### Key Functions
-
-#### `get_opds_data($id)`
-Generate OPDS entry from Archive metadata:
-
-```perl
-# Extract metadata from tags
-$arcdata->{author}   = get_tag_with_namespace("artist", $tags);
-$arcdata->{language} = get_tag_with_namespace("language", $tags);
-$arcdata->{circle}   = get_tag_with_namespace("group", $tags);
-
-# MIME type mapping
-if ($file =~ /\.pdf$/)     { $arcdata->{mimetype} = "application/pdf"; }
-elsif ($file =~ /\.(rar|cbr)$/) { $arcdata->{mimetype} = "application/x-cbr"; }
-elsif ($file =~ /\.epub$/) { $arcdata->{mimetype} = "application/epub+zip"; }
-else                       { $arcdata->{mimetype} = "application/x-cbz"; }
-```
-
-#### `render_archive_page($mojo, $id, $page)`
-Serve single page image directly (for OPDS readers):
-
-```perl
-my @images = get_filelist($archive, $id);
-my $image = $images[$page - 1];
-LANraragi::Model::Archive::serve_page($mojo, $id, $image);
-```
-
----
-
-## 📂 Category.pm - Category Management Model
-
-### Concept
-
-Categories are divided into two types:
-- **Static Category**: Manually added archive collection
-- **Dynamic Category**: Auto-matched collection based on search criteria
-
-### Redis Storage Structure
-
-```
-SET_1589141306 (Hash):
-  name: "Category Name"
-  search: ""              # Empty string = Static category
-  pinned: "1"             # Is pinned
-  archives: '["id1","id2"]'  # JSON array (static only)
-```
-
-### Core Functions
-
-| Function | Purpose |
-|----------|---------|
-| `get_category_list()` | Get all categories |
-| `get_static_category_list()` | Get static categories only |
-| `get_categories_containing_archive($id)` | Find categories containing archive |
-| `get_category($id)` | Get single category details |
-| `create_category($name, $favtag, $pinned, $id)` | Create/update category |
-| `delete_category($id)` | Delete category |
-| `add_to_category($cat_id, $arc_id)` | Add archive to static category |
-| `remove_from_category($cat_id, $arc_id)` | Remove archive from category |
-
-### Bookmark Link Feature
-
-```perl
-# Link bookmark button to a static category
-$redis->hset('LRR_CONFIG', 'bookmark_link', $cat_id);
-
-# Get/remove bookmark link
-get_bookmark_link();
-update_bookmark_link($cat_id);
-remove_bookmark_link();
-```
-
----
-
-## 📊 Stats.pm - Statistics and Index Building
-
-### Core Function
-
-`build_stat_hashes()` is the core function for rebuilding search indexes, building the following Redis structures:
-
-| Redis Key | Type | Purpose |
-|-----------|------|---------|
-| `LRR_URLMAP` | Hash | URL → Archive ID mapping |
-| `LRR_STATS` | Sorted Set | Tag cloud statistics (score = occurrence count) |
-| `LRR_UNTAGGED` | Set | Untagged archive IDs |
-| `LRR_NEW` | Set | New archive IDs (isnew=true) |
-| `LRR_TITLES` | Sorted Set | Title index (`title\0id` format) |
-| `LRR_TANKGROUPED` | Set | Visible IDs after collection grouping |
-| `INDEX_{tag}` | Set | Archive ID index per tag |
-
-### Index Building Flow
-
-```mermaid
-flowchart TD
-    A[Start build_stat_hashes] --> B[Get All Archive IDs]
-    B --> C[Get All Tankoubons]
-    C --> D[Iterate Tanks]
-    D --> E[Add Tank ID to TANKGROUPED]
-    E --> F[Index Tags in Tank Archives]
-    F --> G[Iterate Remaining Archives]
-    G --> H{Has Tags?}
-    H -->|No| I[Add to LRR_UNTAGGED]
-    H -->|Yes| J[Index Tags]
-    J --> K{Has source: Tag?}
-    K -->|Yes| L[Add to LRR_URLMAP]
-    K -->|No| M[Continue]
-    L --> M
-    M --> N[Add to LRR_TITLES]
-    N --> O[Check isnew]
-    O --> P[End]
-```
-
-### Other Key Functions
-
-| Function | Purpose |
-|----------|---------|
-| `get_archive_count()` | Get archive count (including Tank grouping) |
-| `get_page_stat()` | Get total page statistics |
-| `is_url_recorded($url)` | Check if URL is already in library |
-| `build_tag_stats($minscore)` | Build tag cloud JSON |
-| `compute_content_size()` | Calculate library total size (GB) |
+# 06 - Model Layer
+
+> Baseline commit `2094cc1d` (2026-09-04). Facts verified against code — cite-checked at generation time.
+
+The Model layer (`lib/LANraragi/Model/`) holds LANraragi's business logic between the Controllers and Redis.
+Every module reaches Redis through `LANraragi::Model::Config`'s connection factories, and most long-running work
+(thumbnail generation, plugin runs, backups) is delegated to Minion jobs — the tasks themselves are defined in
+`lib/LANraragi/Utils/Minion.pm` and covered in the Utilities chapter; this chapter only references them.
+
+All 16 modules in `lib/LANraragi/Model/`:
+
+| Module | One-line role |
+|---|---|
+| `Config.pm` | Configuration access: Redis connection factories, `LRR_CONFIG` reads with defaults. |
+| `Search.pm` | The search engine: token parsing, filtering, sorting, result caching. |
+| `Archive.pm` | Archive lifecycle: page/thumbnail serving, metadata, ToC, deletion. |
+| `Upload.pm` | Ingesting uploaded/downloaded files into the library. |
+| `Backup.pm` | JSON export/import of all user metadata. |
+| `Category.pm` | Categories (`SET_` keys), including the bookmark link. |
+| `Tankoubon.pm` | Tankoubon collections (`TANK_` keys, one Redis Sorted Set each). |
+| `Reader.pm` | Server-side reader support: page list JSON, quality-based resizing. |
+| `Plugins.pm` | Plugin discovery, execution, install/uninstall from registries. |
+| `Registry.pm` | Plugin registries (GitHub/Gitea/CDN/local sources). |
+| `Stats.pm` | Search-index and tag-statistic construction. |
+| `Stamp.pm` | Page stamps/bookmarks (`STAMPS_*` keys). |
+| `Opds.pm` | OPDS 1.2 catalog + PSE page streaming. |
+| `Metrics.pm` | Prometheus metrics collection. |
+| `Setup.pm` | First-install actions (default category + default registry). |
+| `Server.pm` | Server-state flags (restart-pending marker). |
+
+## Configuration: `Model/Config.pm`
+
+`Config.pm` bootstraps `lrr.conf` at compile time (overridable via `LRR_REDIS_ADDRESS`) and exposes five logical
+Redis databases: archives (`redis_database` 0), Minion (`redis_database_minion` 1), config
+(`redis_database_config` 2), search (`redis_database_search` 3), metrics (`redis_database_metrics` 4), matching
+the defaults in `lrr.conf`. Five connection factories hand out fresh connections to the right DB —
+`get_redis()`, `get_redis_config()`, `get_redis_search()`, `get_redis_metrics()`, all built on
+`get_redis_internal()` — plus `get_minion()`, which constructs the `Minion` client for the Minion DB.
+Callers are responsible for `quit()`ing what they take.
+
+Runtime settings live in the `LRR_CONFIG` hash of the config DB; `get_redis_conf($param, $default)` returns the
+stored value or the built-in default, and a long tail of typed accessors wraps it (`get_pagesize`,
+`get_thumbdir`, `get_userdir`, `enable_resize`, `get_threshold`, `get_readquality`, `enable_pass`,
+`enable_nofun`, `enable_cors`, `enable_metrics`, `enable_localprogress`, `enable_authprogress`,
+`get_replacedupe`, `get_hqthumbpages`, `get_jxlthumbpages`, `get_style`, `get_language`, ...). `get_baseurl()`
+feeds the path-prefix handling described in the Frontend chapter.
+
+## Search: `Model/Search.pm`
+
+`do_search($filter, $category_id, $start, $sortkey, $sortorder, $newonly, $untaggedonly, $grouptanks,
+$hidecompleted)` takes nine parameters. It refuses to run until the `LAST_JOB_TIME` key exists (i.e. until the
+index-building job has run once) and returns `(total, filtered_count, @ids)`.
+
+Caching: the full result list is Storable-`nfreeze`d into the `LRR_SEARCHCACHE` hash (search DB) under a cache
+key built from eight of the nine parameters (everything but `$start`, which is applied when slicing the cached
+list). `check_cache()` also looks for a key with the *inverted* sort order — since
+reversing a sorted list yields the opposite order, this halves the cache space (only the keyed prefix is
+reversed, so archives missing the sort namespace stay at the back). Two bypasses exist: `lastread` sorts always
+run uncached (reading updates don't invalidate the cache), and any structural change calls
+`invalidate_cache()` from `LANraragi::Utils::Database`.
+
+Filtering (`search_uncached()`) starts from all 40-character archive IDs — or the `LRR_TANKGROUPED` set when
+`$grouptanks` groups tanks with their archives — then intersects, per token, against:
+
+- `INDEX_<tag>` sets for tag matches (fuzzy unless quoted; a namespace in the token anchors the index scan),
+- a `zscan` over the `LRR_TITLES` sorted set (members are `title\0id`) for title matches,
+- set filters: category archives or the dynamic category's own search tokens, `LRR_UNTAGGED`, `LRR_NEW`,
+- `$hidecompleted`: a Lua script bulk-checks `progress/pagecount > 0.85` per ID (with a per-ID HGET fallback),
+- `pages:`/`read:` tokens comparing against the `pagecount`/`progress` hash fields with `=`, `>`, `>=`, `<`, `<=`.
+
+Search syntax, from `compute_search_filter()`: comma-separated tokens; `"quoted"` or a trailing `$` forces exact
+matching; a leading `-` excludes; `?`/`_` match one character and `*`/`%` any number (rewritten to Redis glob
+metacharacters); `namespace:value` restricts to a namespace. Sorting (`sort_results()`) is either by title via
+the natural sort of `LRR_TITLES`, or by any tag namespace (extracted with a regex, missing values sink to the
+back as `zzzz`), or by `lastreadtime` — the lastread and tag paths fetch values in bulk via Lua scripts
+(`script_load` + `evalsha`) with pure-Perl fallbacks (`_fallback_lastread`, `_fallback_tags`), and
+`_impute_tank_date_tags()` infers `date_added`/`timestamp` sort keys for tanks from their member archives.
+
+## Archives: `Model/Archive.pm`
+
+- `serve_page($id, $path)`: extracts a file from the archive on demand through
+  `get_page_data()`/`LANraragi::Utils::PageCache` (cache key `page/$id/$path`); when resizing is enabled the
+  result goes through `Model::Reader::resize_image()` and is cached under `resize_page/$id/$path/$threshold/$quality`.
+  CBW (web-streaming) archives additionally trigger `cbw_prefetch()` to warm the next pages.
+- `serve_thumbnail($id)` / `update_thumbnail($id)`: thumbnails live under the thumb dir keyed by the first two
+  ID characters, in `jpg` or `jxl` depending on `get_jxlthumbpages()`, with cross-format fallback. A missing
+  thumbnail either returns `public/img/noThumb.png` or — when the client passes `no_fallback=true` — queues the
+  `thumbnail_task` Minion job and returns `202` with the job ID.
+- `generate_page_thumbnails($id)`: scans for missing per-page thumbnails and queues the `page_thumbnails` Minion
+  job (deduplicated by the `thumbjob` hash field; `202` while active).
+- `update_metadata($id, $title, $tags, $summary)`: trims inputs, writes via the Database utils, invalidates cache.
+- ToC management: `add_toc_entry($id, $page, $title)` / `remove_toc_entry($id, $page)` maintain the archive's
+  `toc` JSON hash ({ page → title }), which the reader overlay turns into chapters.
+- `delete_archive($id)`: removes the archive from every containing Tankoubon and category, unlinks the file and
+  thumbnails, and drops the Redis entry.
+
+## Ingest: `Model/Upload.pm`
+
+`handle_incoming_file($tempfile, $catid, $tags, $title, $summary)` returns `(status, id, name, message)`:
+
+1. rejects non-archives with `415`; computes the ID with `compute_id()` (SHA-1 of the first 512 KB of the file,
+   via Database utils);
+2. **duplicate detection** — if the ID exists (and its file is on disk) or a same-named file exists, returns
+   `409` unless the `replacedupe` setting allows replacement, in which case the old archive/file is deleted
+   first (filename collisions are resolved through the `LRR_FILEMAP` hash);
+3. registers the archive in Redis, applies caller-supplied tags — a `source:<url>` tag is also written into the
+   `LRR_URLMAP` hash (search DB) so URL lookups resolve without a full reindex — then optional title/summary;
+4. moves the file in two phases: temp → `<target>.upload` → rename inside the content folder, so the Shinobu
+   file watcher only sees complete files (a `500` message is returned if either move fails);
+5. adds `date_added`/pagecount/size, generates the thumbnail, runs autoplugins
+   (`Plugins::exec_enabled_plugins_on_file`), optionally adds to a category, and invalidates the search cache.
+
+`download_url($url, $ua)` implements the downloader half: retries for a `Content-Disposition` header, decodes the
+filename (UTF-8/Latin-1/RFC 5987/URL-tail fallbacks), strips Windows-illegal characters, truncates to the
+filesystem byte limit (143/255 depending on `enable_cryptofs`), and stages the file in a `File::Temp` dir for
+`handle_incoming_file`.
+
+## Backup: `Model/Backup.pm`
+
+`build_backup_JSON($job)` walks Redis and produces a JSON document with four top-level arrays — `categories`
+(from `SET_` keys: catid/name/search/archives), `tankoubons` (via `Tankoubon::get_tankoubon_list(-1)`:
+tankid/name/summary/tags/archives), `stamps` (from `STAMPS_*` keys: stamp_id/content/position/archive_id), and
+`archives` (all 40-char IDs with arcid/title/tags/summary/thumbhash/filename plus the archive-level `stamps`
+list and `toc` fields). When invoked as a Minion job it reports progress via `$job->note(...)`.
+
+`restore_from_JSON($json, $job)` first calls `clean_database()` to strip existing user metadata, then recreates
+categories (`Category::create_category` + `add_to_category`), Tankoubons (`create_tankoubon`,
+`update_metadata`, `set_tank_tags`, `update_archive_list`), archive metadata **only for IDs that still exist**
+(title/tags/summary/thumbhash/stamps/toc — `stamps`/`toc` default to `[]`/`{}` when absent), and finally the
+`STAMPS_*` hashes, again only if their archive survived. `invalidate_cache()` fires at the end.
+
+## Collections: `Model/Category.pm` and `Model/Tankoubon.pm`
+
+Categories are `SET_<timestamp>` hashes with `name`, `search` (dynamic categories) and `archives` (a JSON array;
+static categories). `create_category()` can reuse a caller-supplied ID (used by backup restore);
+`add_to_category()`/`remove_from_category()` maintain the array; `get_bookmark_link()`/`update_bookmark_link()`
+manage the special category wired to the reader's bookmark button (exposed to the frontend as
+`/api/categories/bookmark_link` and cached in localStorage as `bookmarkCategoryId`).
+
+A Tankoubon is a single Redis **Sorted Set** keyed `TANK_<timestamp>` (15 chars): member archives sit at scores
+`>= 1` (the score *is* the page order), while metadata rides in reserved members at non-positive scores — `name` at
+`0`, `summary` at `-1`, `tags` at `-2`, `progress` at `-3` (see the `%TANK_METADATA` map and
+`fetch_metadata_fields()`). `get_tankoubon()` reassembles the object (with pagination via `zrangebyscore ...
+LIMIT`); `update_archive_list()`/`add_to_tankoubon()`/`remove_from_tankoubon()` rewrite member scores;
+`update_tank_progress($tank_id, $page)` records reading position through `update_metadata_field()`;
+`set_tank_tags()` also maintains the tag indexes; `get_tank_unified_tags()` merges member tags (with imputed
+`date_added`) for search/sorting. Tanks register in the `LRR_TANKGROUPED` set during index building.
+
+## Reader & OPDS: `Model/Reader.pm`, `Model/Opds.pm`
+
+`Reader.pm` is deliberately small: `build_reader_JSON()` opens the archive, returns the browser-facing page
+paths (URL-escaped, each pointing at `/api/archives/{id}/page?path=...`) and refreshes the stored `pagecount`;
+`resize_image($content, $quality, $threshold)` is the Model-level resize entry that internally calls
+`resize_page()` on the resampler built by `LANraragi::Utils::Resizer`'s `get_resizer()` (a no-op returning the
+original bytes when no resizer is available or the image is under the size threshold).
+
+`Opds.pm` renders the OPDS 1.2 feed: `generate_opds_catalog()` lists archives per page/category through
+`Search::do_search`, `generate_opds_item()` renders one entry, both via the `opds`/`opds_entry` templates.
+`get_opds_data()` derives author/language/circle/event from `artist`/`language`/`group`/`event` tags and
+maps file extension → MIME type: `.pdf` → `application/pdf`, `.rar`/`.cbr` → `application/x-cbr`, `.epub` →
+`application/epub+zip`, `.cbw` → `application/xml`, everything else (zip/cbz) → `application/x-cbz`.
+PSE (Page Streamed Extension) support lives in the same templates: entries embed an
+`http://vaemendis.net/opds-pse/stream` link pointing at `/api/opds/{id}/pse?page={pageNumber}` with
+`pse:count`/`pse:lastRead` attributes; the endpoint (`Controller/Api/Other.pm`'s `serve_opds_page`) calls
+`Opds::render_archive_page()`, which resolves the page number against the archive's file list and serves it
+through `Archive::serve_page()`.
+
+## Plugins & Registries: `Model/Plugins.pm`, `Model/Registry.pm`
+
+`Plugins.pm` (the largest Model module) covers:
+
+- Execution: `exec_enabled_plugins_on_file($id)` (autoplugin pass after upload), `exec_metadata_plugin()`,
+  `exec_script_plugin()`, `exec_download_plugin()`, `exec_login_plugin()` (the configured login plugin used by
+  downloaders).
+- Installation state: plugins record under `LRR_PLUGIN_<NAMESPACE>` hashes. `install_plugin($namespace, ...)`
+  distinguishes built-in vs registry-managed ("managed") plugins, rejects cross-registry overwrites without
+  `force`, and copies the plugin file in from its registry; `uninstall_plugin()` deletes managed plugin files,
+  refuses built-ins with `403`, unregisters the plugin, and flags a server restart via
+  `Server::set_restart_pending()`. `scan_plugins()` (also run at every startup from `lib/LANraragi.pm`)
+  reconciles discovered plugin classes (`Module::Pluggable` discovery via `LANraragi::Utils::Plugins`) against
+  the Redis registration state.
+
+`Registry.pm` manages the sources plugins come from — registry entries (`REG_<timestamp>` IDs) support four
+providers (`github`, `gitea`, `cdn`, `local`, per `%PROVIDER_FIELDS`), with create/update/delete/list plus
+`refresh_registry()` (fetches and validates the registry index, capped at the 100 MB `MAX_REGISTRY_INDEX_SIZE`)
+and the default-registry accessors. `lib/LANraragi.pm` refreshes every registry at startup.
+
+## Small modules
+
+- **`Stamp.pm`** — page stamps ("bookmark a note to page N"). `add_stamp()` creates `STAMPS_<page>_<millis>`
+  hashes (content/position/archive_id) and appends the ID to the archive's `stamps` JSON array;
+  `get_stamps_by_page()`, `get_stamped_pages()`, `update_stamp()`, `remove_stamp()` round out the CRUD.
+- **`Stats.pm`** — `build_stat_hashes()` (run as the `build_stat_hashes` Minion job at startup and on cache
+  invalidation) rebuilds the entire search DB in one WATCH/MULTI transaction: `flushdb()`, then per
+  archive/tank the `INDEX_<tag>` sets, `LRR_TITLES`, `LRR_STATS` (tag counters), `LRR_UNTAGGED`, `LRR_NEW`,
+  `LRR_TANKGROUPED`, ending by stamping `LAST_JOB_TIME`. Also exposes `is_url_recorded()` against `LRR_URLMAP`.
+- **`Metrics.pm`** — Prometheus support, gated by the `enablemetrics` setting: `collect_request_metrics()` (via
+  the `before/after_dispatch` hooks installed in `lib/LANraragi.pm`), `collect_process_metrics()` and
+  `flush_request_metrics_to_redis()` on a 30 s recurring timer, worker tracking
+  (`register_worker`/`unregister_worker`), and the `get_prometheus_*` renderers.
+- **`Setup.pm`** — `first_install_actions()` detects a fresh install by the absence of `LRR_CONFIG → htmltitle`,
+  creates the default "🔖 Favorites" category, links it to the bookmark button, and seeds the default plugin
+  registry ("Ougi", `https://github.com/Difegue/Ougi.git`, branch `main`).
+- **`Server.pm`** — a single `LRR_SERVER` hash in the config DB holding the `restart_pending` flag:
+  `set_restart_pending()` (after plugin install/uninstall), `clear_restart_pending()` (at startup),
+  `is_restart_pending()` (polled by the UI to prompt a restart).

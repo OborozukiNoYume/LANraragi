@@ -1,425 +1,168 @@
-# 前端架构
-
-> 分析日期：2026-01-11
-
-本文档分析 LANraragi 的 JavaScript 前端架构。
-
----
-
-## 📊 核心模块概览
-
-| 文件 | 行数 | 主要职责 | 关键依赖 |
-|------|------|----------|----------|
-| `common.js` | 486 | 全局工具、UI 组件构建 | jQuery, React (toast), SweetAlert2 |
-| `server.js` | 346 | API 客户端、异步任务轮询 | fetch API, LRR 命名空间 |
-| `reader.js` | 1143 | 阅读器核心逻辑 | fscreen (全屏), LRR/Server |
-| `index.js` | 1040 | 首页/列表页逻辑 | DataTables, Swiper, Awesomplete |
-| `index_datatables.js` | 413 | **DataTables 配置与渲染** | DataTables, tippy.js |
-| `batch.js` | ~350 | 批量标签操作 | Server API |
-| `category.js` | ~300 | 分类管理页面 | Server API |
-| `edit.js` | ~250 | 元数据编辑 | Server API |
-| `upload.js` | ~230 | 上传功能 | Server API |
-| `duplicates.js` | ~300 | 重复检测页面 | Server API |
-| `config.js` | ~180 | 设置页面 | Server API |
-| `stats.js` | ~50 | 统计页面图表 | Server API |
-| `plugins.js` | ~35 | 插件管理 | Server API |
-| `logs.js` | ~45 | 日志页面 | Server API |
-| `backup.js` | ~30 | 备份页面 | Server API |
-
----
-
-## 📊 index_datatables.js - 表格核心
-
-### 模块结构
-
-```javascript
-const IndexTable = {
-    dataTable: {},           // DataTables instance
-    originalTitle: "",       // Original page title
-    isComingFromPopstate: false,  // Browser history state
-    currentSearch: ""        // Current search term
-};
-```
-
-### DataTables 配置
-
-```javascript
-IndexTable.dataTable = $(".datatables").DataTable({
-    serverSide: true,        // Server-side pagination
-    processing: true,
-    ajax: { url: "search", cache: true },
-    deferRender: true,       // Deferred rendering
-    lengthChange: false,
-    pageLength: Index.pageSize,
-    order: [[0, "asc"]],     // Default sort by title
-    columns: [
-        { data: null, name: "title", render: IndexTable.renderTitle },
-        { data: "tags", name: "customColumn1", render: IndexTable.renderColumn },
-        { data: "tags", name: "tags", orderable: false, render: IndexTable.renderTags }
-    ]
-});
-```
-
-### 双视图模式
-
-| 模式 | 存储键 | 渲染方式 |
-|------|--------|----------|
-| **列表模式** | `indexViewMode=0` | 标准 `<table>` 渲染 |
-| **缩略图模式** | `indexViewMode=1` | 动态创建 `#thumbs_container` |
-
-```javascript
-IndexTable.createdRow = function(row, data) {
-    row.id = data.arcid;
-    row.classList.add('context-menu');
-    if (localStorage.indexViewMode === "1") {
-        // Thumbnail mode: create thumbnail div
-        $("#thumbs_container").append(LRR.buildThumbnailDiv(data));
-    }
-};
-```
-
-### URL 状态管理
-
-支持 pushState/popState 持久化搜索状态：
-
-```javascript
-// Build URL parameters
-IndexTable.buildURLParameters = function() {
-    return `?p=${page}&sort=${sortby}&sortdir=${sortorder}&q=${search}&c=${category}`;
-};
-
-// Consume URL parameters
-IndexTable.consumeURLParameters = function() {
-    const params = new URLSearchParams(window.location.search);
-    if (params.has("q")) IndexTable.currentSearch = params.get("q");
-    if (params.has("c")) Index.selectedCategory = params.get("c");
-    IndexTable.doSearch(params.get("p") - 1);
-};
-```
-
-## 🔧 架构分析
-
-### 1. LRR 全局命名空间 (`common.js`)
-
-核心工具类，被所有页面引用：
-
-```javascript
-const LRR = {};
-
-// URL wrapper class - handles Base URL
-LRR.apiURL = class {
-    static base_url = _get_baseurl_cookie();
-    constructor(load_url) { ... }
-    toString() { return LRR.apiURL.base_url + this.load_url; }
-};
-```
-
-**关键函数：**
-
-| 函数 | 用途 |
-|------|------|
-| `isUserLogged()` | 从 `data-user-logged` 获取登录状态 |
-| `splitTagsByNamespace(tags)` | 解析 `namespace:tag` 格式 |
-| `buildTagsDiv(tags)` | 生成可点击标签 HTML |
-| `buildThumbnailDiv(data)` | 构建缩略图卡片组件 |
-| `getProgress(arcdata)` | 获取阅读进度（本地/服务器） |
-| `showErrorToast()` / `toast()` | Toast 通知（已迁移至 react-toastify） |
-
-**数据流：**
-```
-Template (tt2) → data-* attributes → LRR.isUserLogged() → JS logic
-Cookie (lrr_baseurl) → LRR.apiURL.base_url → API requests
-localStorage → Reading progress/User preferences → UI state
-```
-
----
-
-### 2. API 客户端 (`server.js`)
-
-封装所有后端通信：
-
-```javascript
-const Server = {};
-
-// Generic API call
-Server.callAPI(endpoint, method, successMessage, errorMessage, successCallback)
-
-// API call with request body
-Server.callAPIBody(endpoint, method, body, successMessage, errorMessage, successCallback)
-
-// Minion task polling
-Server.checkJobStatus(jobId, useDetail, callback, failureCallback, progressCallback)
-```
-
-**API 端点使用统计：**
-
-| 端点模式 | 调用位置 | HTTP 方法 |
-|----------|----------|-----------|
-| `/api/archives/{id}/metadata` | reader, index, edit | GET/PUT |
-| `/api/archives/{id}/files` | reader | GET |
-| `/api/archives/{id}/thumbnail` | index | GET/PUT |
-| `/api/archives/{id}/progress/{page}` | reader | PUT |
-| `/api/categories/{id}/{arcId}` | reader, index | PUT/DELETE |
-| `/api/minion/{jobId}` | server | GET |
-| `/api/search` | index | GET |
-| `/api/database/stats` | index | GET |
-
-**错误处理模式：**
-```javascript
-fetch(endpoint)
-    .then(response => response.ok ? response.json() : { success: 0, error: ... })
-    .then(data => { if (data.success) callback(data); else throw Error(data.error); })
-    .catch(error => LRR.showErrorToast(errorMessage, error));
-```
-
----
-
-### 3. 阅读器模块 (`reader.js`)
-
-**状态管理：**
-```javascript
-Reader.id = "";              // Current Archive ID
-Reader.currentPage = -1;     // Current page (0-indexed)
-Reader.pages = [];           // Page URL list
-Reader.preloadedImg = {};    // Preloaded image cache
-Reader.mangaMode = false;    // Right→Left reading
-Reader.doublePageMode = false; // Double page mode
-Reader.infiniteScroll = false; // Infinite scroll
-```
-
-**键盘快捷键：**
-
-| 按键 | 功能 |
-|------|------|
-| ← / A | 上一页 |
-| → / D | 下一页 |
-| Space | 滚动/翻页（智能检测） |
-| M | 切换漫画模式 |
-| P | 切换双页模式 |
-| F | 全屏 |
-| Q | 打开缩略图叠加层 |
-| B | 切换书签 |
-| R | 随机漫画 |
-
-**图像预加载策略：**
-```javascript
-Reader.preloadImages = function () {
-    let preloadNext = Reader.preloadCount;  // Default preload count
-    let preloadPrev = Reader.preloadCount == 0 ? 0 : 1;
-    
-    // Double in double page mode
-    if (Reader.doublePageMode) { preloadNext *= 2; preloadPrev *= 2; }
-    
-    for (let i = 1; i <= preloadNext; i++) {
-        Reader.loadImage(Reader.currentPage + i);
-    }
-};
-```
-
-**进度跟踪逻辑：**
-```javascript
-Reader.updateProgress = function () {
-    if (Reader.authenticateProgress && LRR.isUserLogged()) {
-        // Logged in user → Server storage
-        Server.callAPI(`/api/archives/${Reader.id}/progress/${Reader.currentPage + 1}`, "PUT");
-    } else if (Reader.trackProgressLocally) {
-        // Not logged in/Local mode → localStorage
-        localStorage.setItem(`${Reader.id}-reader`, Reader.currentPage + 1);
-    }
-};
-```
-
----
-
-### 4. 首页模块 (`index.js`)
-
-**DataTables 集成：**
-- 服务端分页 (`serverSide: true`)
-- 自定义列排序
-- 虚拟滚动（用于大数据集）
-
-**轮播：**
-```javascript
-// Swiper configuration
-Index.swiper = new Swiper(".index-carousel-container", {
-    virtual: { enabled: true },  // Virtualized rendering
-    mousewheel: true,
-    navigation: { nextEl: ".carousel-next", prevEl: ".carousel-prev" }
-});
-
-// Data source switching
-switch (localStorage.carouselType) {
-    case "random":   endpoint = `/api/search/random?...`;
-    case "inbox":    endpoint = `/api/search?newonly=true...`;
-    case "ondeck":   endpoint = `/api/search?sortby=lastread`;
-    case "untagged": endpoint = `/api/search?untaggedonly=true...`;
-}
-```
-
-**标签自动补全：**
-```javascript
-Index.loadTagSuggestions = function () {
-    Server.callAPI("/api/database/stats?minweight=2", "GET", null, ...,
-        (data) => {
-            Index.awesomplete = new Awesomplete(searchInput, {
-                list: data.map(tag => ({ label: tag.text, value: tag.text })),
-                filter: (text, input) => ...,
-                sort: (a, b) => b.weight - a.weight  // Sort by weight
-            });
-        });
-};
-```
-
----
-
-## 📦 localStorage 使用
-
-| 键 | 用途 | 默认值 |
-|----|------|--------|
-| `indexViewMode` | 列表/缩略图视图 | `1` (缩略图) |
-| `cropthumbs` | 裁剪缩略图 | `true` |
-| `mangaMode` | 漫画阅读方向 | `false` |
-| `doublePageMode` | 双页显示 | `false` |
-| `infiniteScroll` | 无限滚动模式 | `false` |
-| `{archiveId}-reader` | 阅读进度 | - |
-| `bookmarkCategoryId` | 书签分类 ID | - |
-| `customColumn1/2` | 自定义列命名空间 | `artist/series` |
-| `carouselType` | 轮播类型 | `ondeck` |
-
----
-
-## 🔗 前后端交互流程
-
-### 阅读器初始化
-```mermaid
-sequenceDiagram
-    Reader->>Server: GET /api/archives/{id}/metadata
-    Server-->>Reader: {title, tags, progress, pagecount}
-    Reader->>Reader: initializeSettings()
-    Reader->>Server: GET /api/archives/{id}/files
-    Server-->>Reader: {pages: [...]}
-    Reader->>Reader: goToPage(progress || 0)
-    Reader->>Server: DELETE /api/archives/{id}/isnew
-```
-
-### 搜索流程
-```mermaid
-sequenceDiagram
-    User->>Index: Enter search term
-    Index->>Awesomplete: Show suggestions
-    User->>Index: Submit search
-    Index->>DataTables: search()
-    DataTables->>Server: GET /api/search?filter=...
-    Server-->>DataTables: {data: [...], recordsTotal, recordsFiltered}
-    DataTables->>Index: Render results
-```
-
----
-
-## 📄 页面模块分析
-
-### batch.js - 批量操作
-
-**状态管理：**
-```javascript
-const Batch = {};
-Batch.treatedArchives = 0;
-Batch.totalArchives = 0;
-Batch.currentOperation = "";  // "plugin" | "delete" | "tagrules" | "addcat" | "clearnew"
-Batch.currentPlugin = "";
-```
-
-**WebSocket 通信：**
-- 使用 WebSocket 连接 `/batch/socket` 进行实时任务推送
-- 支持的操作：插件执行、删除、标签规则、添加到分类、清除新标记
-- 每次操作完成后自动清除搜索缓存
-
-**关键流程：**
-1. 加载所有档案列表 (`/api/archives`)
-2. 自动选择未标记档案 (`/api/archives/untagged`)
-3. 通过 WebSocket 逐个处理选中的档案
-4. 实时更新进度条和日志
-
-### category.js - 分类管理
-
-**状态管理：**
-```javascript
-const Category = {};
-Category.categories = [];  // Client-cached category list
-```
-
-**核心功能：**
-- 创建静态/动态分类
-- 查看/编辑分类详情
-- 管理分类内的档案列表
-- 书签链接功能 (localStorage + API)
-
-**API 交互：**
-| 操作 | 端点 | 方法 |
-|------|------|------|
-| 获取列表 | `/api/categories` | GET |
-| 创建 | `/api/categories?name=...&search=...` | PUT |
-| 更新 | `/api/categories/{id}?name=...` | PUT |
-| 删除 | `/api/categories/{id}` | DELETE |
-| 添加档案 | `/api/categories/{catId}/{arcId}` | PUT |
-| 移除档案 | `/api/categories/{catId}/{arcId}` | DELETE |
-
-### edit.js - 元数据编辑
-
-**标签输入：**
-- 使用 `tagger` 库进行富文本标签编辑
-- 支持自动补全（基于 `/api/database/stats`）
-- 粘贴时自动拆分逗号分隔的标签
-
-**插件集成：**
-```javascript
-Edit.runPlugin = function () {
-    Edit.saveMetadata().then(() => Edit.getTags());
-};
-// Save current metadata first, then run plugin to get new tags
-```
-
-**API 交互：**
-| 操作 | 端点 | 方法 |
-|------|------|------|
-| 保存元数据 | `/api/archives/{id}/metadata` | PUT |
-| 运行插件 | `/api/plugins/use?plugin=...&id=...` | POST |
-| 删除档案 | `/api/archives/{id}` | DELETE |
-
-### upload.js - 上传功能
-
-**文件上传：**
-- 使用 `jquery-file-upload` 插件
-- 支持分类选择（`catid` 参数）
-- 上传后通过 Minion Job 异步处理
-
-**URL 下载：**
-```javascript
-Upload.downloadUrl = function () {
-    // One URL per line, submit in parallel to /api/download_url
-    $("#urlForm").val().split(/\r|\n/).forEach((url) => { ... });
-};
-```
-
-**进度跟踪：**
-- `processingArchives`：处理中
-- `completedArchives`：已完成
-- `failedArchives`：失败
-- 使用 `Server.checkJobStatus()` 轮询 Minion 任务状态
-
----
-
-## 📋 前端依赖列表
-
-| 库 | 版本 | 用途 |
-|----|------|------|
-| jQuery | 3.x | DOM 操作 |
-| DataTables | 1.x | 表格组件 |
-| Swiper | 8.x | 轮播 |
-| Awesomplete | 1.x | 自动补全 |
-| SweetAlert2 | 11.x | 弹窗组件 |
-| react-toastify | 9.x | Toast 通知 |
-| fscreen | 1.x | 全屏 API |
-| ClipboardJS | 2.x | 剪贴板操作 |
-| marked | 4.x | Markdown 渲染 |
-| context-menu | 2.x | 右键菜单 |
+# 05 - 前端架构
+
+> 基准 commit `2094cc1d`（2026-09-04）。事实已对照代码核实——生成时已完成引证核查。
+
+LANraragi 前端是一个混合技术栈：应用代码使用现代 **ES Modules**，通过标准的
+[import map](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script/type/importmap)（导入映射）加载；同时用经典
+`<script>` 标签承载基于 jQuery 的旧版组件（DataTables、contextMenu、文件上传）。本章描述
+脚本的加载方式、`public/js/mod/` 下的共享模块、位于 `public/js/` 根目录的按页面划分的脚本、
+阅读器的客户端状态机，以及模板/主题层。
+
+## 加载架构
+
+每个页面模板都包含 `templates/common/importmap.html.tt2`，它输出一个 `<script type="importmap">`
+块，将裸模块标识符映射到带版本的 URL，例如 `preact` → `/js/$version/vendor/preact.module.js`、
+`react-toastify` → `/js/$version/vendor/react-toastify.esm.js`、`swiper` → `/js/$version/vendor/swiper-bundle.js`。
+它还会异步加载 `es-module-shims.js`（来自 `es-module-shims` npm 包），为不支持原生
+import map 的浏览器提供 polyfill。
+
+入口点遵循 `/js/{version}/mod/<module>.js` 模式，其中 `{version}` 来自 `LRR_VERSION` 助手
+（以 `$version` 注入模板，其值由 `LANraragi::Utils::Generic` 的 `get_version()` 从
+`package.json` 的 `version` 字段取得）。版本号纯粹是缓存破坏（cache buster）手段：`lib/LANraragi/Utils/Routing.pm`
+中定义的路由匹配 `/js/:version/*filepath`，从 `public/js/` 提供文件，并附带
+`Cache-Control: public, max-age=31536000, immutable`。
+
+另有两个相关机制补充完整：
+
+- `/js/i18n.js` 不是静态文件——它由 `LANraragi::Controller::I18N` 渲染，后者将
+  `templates/i18n.html.tt2` 以 `application/javascript` 提供。因此整个 i18n 词典就是一个 ES 模块
+  （几乎每个脚本中都会出现 `import I18N from "i18n"`），无需任何客户端 i18n 库。
+- `lrr_baseurl` 是由 `lib/LANraragi.pm` 中 `before_dispatch` 钩子设置的 cookie（面向部署在
+  路径前缀之下的场景）。`public/js/mod/common.js` 中的 `ApiURL` 类读取它，并将基础 URL
+  前置到每个应用内部 URL 上；所有 API 调用都经由它进行。
+
+`public/js/vendor/` 下的第三方 ESM 文件**不提交到仓库**——它们由 esbuild 在安装时从
+`node_modules` 打包而来，由 `tools/install.pl` 中的 `@vendor_bundle` 列表驱动。jQuery 及其他经典
+脚本（`jquery.min.js`、`jquery.dataTables.min.js`、`jquery.contextMenu.min.js`、`awesomplete.min.js`、
+`tippy-bundle.umd.min.js` 等）通过页面模板中的普通 `<script src>` 标签加载（参见
+`templates/index.html.tt2` 和 `templates/reader.html.tt2`），并在模块代码中作为全局变量（`$`、`tippy`、……）
+使用。模板通常用一个内联 `<script type="module">` 引导：导入该页面的模块，并在
+`jQuery(...)` ready 回调中启动 `initializeAll()`。
+
+## 核心模块：`public/js/mod/`
+
+九个共享模块实现了所有跨页面逻辑：
+
+| 模块 | 职责（经核实的导出） |
+|---|---|
+| `common.js` | 每个页面共享的 DOM/字符串助手：`isUserLogged()`（读取 `body[data-user-logged]`）、`splitTagsByNamespace()`、`buildTagList()`、`buildTagsDiv()`、`buildThumbnailDiv()`、`buildStatusDiv()`、`buildBookmarkIconElement()`、`colorCodeTags()`、`getProgress()`、`encodeHTML()`、`convertTimestamp()`、`ApiURL` 类、`getArchiveData()`（按 ID 键控的档案数据会话缓存），以及下文描述的 toast/弹窗层。 |
+| `server.js` | 通用 API 访问：`callAPI()`、`callAPISilent()`、`callAPIBody()`（同时理解 LRR `success/error` JSON 与 OpenAPI 风格 `errors` 载荷的 fetch 封装）、`checkJobStatus()`（Minion 任务轮询）、`saveFormData()`、`triggerScript()`、`deleteArchive()`、`deleteTankoubon()`、`regenerateThumbnails()`、`addArchiveToCategory()`/`removeArchiveFromCategory()`、`updateTagsFromArchive()`/`updateTagsFromTankoubon()`、`loadBookmarkCategoryId()`、`updateServerSideProgress()`。 |
+| `index.js` | 档案索引中表格之外的功能：分类选择器、带 Awesomplete 标签建议的快速搜索（`loadTagSuggestions()`）、Swiper 轮播（`toggleCarousel()`/`updateCarousel()` 导出，另有内部函数 `loadCarousel()`，请求 `/api/search` 的变体如 `/api/search/random?count=15`）、带单行本合并的多选模式（`toggleMultiSelectMode()` 导出，另有内部函数 `mergeSelectionIntoTankoubon()`）、通过 `marked` + `DOMPurify` 渲染的版本检查与更新日志（`checkVersion()`、`fetchChangelog()`）、localStorage→服务器阅读进度迁移（`migrateProgress()`）。 |
+| `index_datatables.js` | 基于 DataTables 的档案表格：`initializeAll()`、`doSearch()`、列渲染器（`renderTitle()`、`renderTags()`）、缩略图视图（`initializeThumbView()`）、URL 状态同步（`buildURLParameters()`/`consumeURLParameters()`）、行/单元格回调。从 `index.js` 拆分出来，以便表格层可以独立替换。 |
+| `index_contextmenu.js` | 档案缩略图上的右键菜单：`initialize(catListData)`、通过 `handleContextMenu()` 接线的删除/评分/分类操作。记录菜单是从轮播还是表格打开（sessionStorage `navigationState`），以便阅读器恢复导航上下文。 |
+| `reader_common.js` | 阅读器入口与共享状态（见下一节）。导出 `initializeAll()`、`state`、`goToPage()`、`applyContainerWidth()`、`stopAutoNextPage()`、`getCurrentChapter()`、`loadContentData()`、`toggleOverlay()`、`getArchiveForPage()`。 |
+| `reader_options.js` | 阅读器设置面板，用 Preact + `htm` 渲染（`SettingsPanel()`），将选项写回 `state` 信号。 |
+| `reader_stamps.js` | 阅读器页面上的戳记/书签标记：`initializeStamps()`、`renderMarkers()`、`clearMarkers()`、`updateStamps(page)`，以及标记模式下的右键菜单处理。 |
+| `reader_archive_overlay.js` | 档案信息覆盖层（分类、目录、已加戳页面列表）：`initializeArchiveOverlay()`、`toggleArchiveOverlay()`、`updateArchiveOverlay()`、`addTocSection()`、`checkStampedPages()`。 |
+
+`common.js` 中 `toast()` 的 toast 系统明确是一个**兼容层**，把旧的
+`jquery-toast-plugin` 选项对象（`heading`、`text`、`icon`、`hideAfter`、……）迁移到
+`react-toastify` 上，并用 Preact 渲染容器（`initializeToasts()`）。对话框走
+`showPopUp()`——`sweetalert2` 的一层薄封装。底层库被替换时，旧调用点无需改动。
+
+`server.js` 中有两个 API 约定，在新增调用时值得了解：
+
+- 响应可能以 LRR 旧格式（`{ success: 0, error }`）或 OpenAPI
+  校验格式（`{ errors: [{ message }] }`）携带错误；`callAPI()` 和 `callAPISilent()` 都会将其转换成
+  抛出的 `Error`。`callAPIBody()` 在同一流程上增加请求体和可选的 `Content-Type`。
+- `checkJobStatus(jobId, useDetail, callback, failureCallback, progressCallback)` 轮询
+  `/api/minion/{id}`（或需要已登录用户的 `/api/minion/{id}/detail`），并按任务状态使用不同的
+  轮询间隔：`inactive` 时 5 秒，`active` 时 1 秒（以任务 `notes` 调用 `progressCallback`），
+  `finished` 状态触发 `callback`。它通过 `setTimeout` 递归，因此页面导航会自然停止
+  轮询。这是每个长时间运行的 Minion 操作（缩略图重新生成、插件运行、备份）的客户端对应物。
+
+## 页面脚本：`public/js/*.js`
+
+每个管理页面都有一个位于根目录的小型 ES 模块，导入共享模块并装配其页面专属的
+DOM。它们都遵循相同形态（`import * as Server from "./mod/server.js"; import * as LRR from "./mod/common.js";`
++ jQuery ready 时的 `initializeAll()`）：
+
+| 脚本 | 页面 |
+|---|---|
+| `backup.js` | 备份导入/导出（恢复文件使用 blueimp jQuery-File-Upload）。 |
+| `batch.js` | 批量标签/插件操作。 |
+| `category.js` | 分类管理。 |
+| `config.js` | 服务器配置（全部设置标签页）。 |
+| `duplicates.js` | 重复检测界面。 |
+| `edit.js` | 档案元数据编辑；标签输入使用 `@jcubic/tagger`，标签排序使用 SortableJS，二者均由 `templates/edit.html.tt2` 作为经典全局脚本加载（`tagger.js`、`Sortable.min.js`）。 |
+| `logs.js` | 日志查看器。 |
+| `plugins.js` | 插件管理与上传。 |
+| `reader.js` | 一行再导出：`export { initializeAll } from "./mod/reader_common.js";` —— 保留它是为了让 `templates/reader.html.tt2` 能加载一个稳定的 URL，而实现放在 `mod/` 中。 |
+| `stats.js` | 统计仪表盘（jqCloud，经 `templates/stats.html.tt2`）。 |
+| `upload.js` | 上传页面（jQuery-File-Upload）。 |
+
+## 阅读器
+
+`public/js/mod/reader_common.js` 是最大的客户端模块。其导出的 `state` 对象是阅读器的单一
+数据源。普通字段保存易失数据（`currentPage`、`pages`、`maxPage`、`archiveIds`、
+`spaceScroll`、`preloadedImg`），而用户偏好是写入时持久化到 `localStorage` 的 **Preact 信号**：
+`containerWidth`、`mangaMode`、`doublePageMode`、`ignoreProgress`、`infiniteScroll`、`fitMode`、
+`hideHeader`、`showOverlayByDefault`、`preloadCount`、`AutoNextPageInterval`、`markersVisible`。正因如此，
+设置面板和戳记模块无需手动事件管线即可响应开关切换（`reader_stamps.js` 使用
+`@preact/signals` 的 `effect()` 在 `markersVisible` 变化时重新渲染标记）。
+
+键盘处理位于 `handleShortcuts()` 中，同时绑定 `keyup` 与（仅空格键的）`keydown`：
+方向键/`a`/`d` 翻页（shift = 首页/末页），空格键带可配置吸附的平滑滚动
+（`state.scrollConfig`），`b` 书签，`f` 全屏（通过 `fscreen`），`g` 跳页提示，`h` 帮助，`m` 漫画
+阅读方向，`n` 自动翻页计时器，`o` 设置覆盖层，`p` 双页模式，`q` 档案覆盖层，
+`r` 随机档案，退格键返回索引，`,`/`.` 跳转到上一个/下一个档案。
+
+阅读进度由 `updateProgress()` 上报，采用由模板传入的服务器设置镜像而来的三路策略
+（`trackProgressLocally`、`authenticateProgress`）：
+
+- 已认证且已登录 → `mod/server.js` 中的 `Server.updateServerSideProgress()`，它发起
+  `PUT /api/archives/{id}/progress/{page}`（单行本则为 `/api/tankoubons/TANK_.../progress/{page}`），
+  并容忍 Redis 被短暂锁定时返回的 423；
+- 本地跟踪 → `localStorage.setItem("<id>-reader", page)`；
+- 未认证的服务器端跟踪 → 同样的 PUT，但不带认证。
+
+图片预取由 `preloadImages()` 完成：它通过 `loadImage()` 以 blob 形式抓取接下来的
+`state.preloadCount.value` 页（双页模式下翻倍，另加前一页），把 `URL.createObjectURL()` 的结果保存在
+`state.preloadedImg` 中，并将字节大小记录到 `state.preloadedSizes` 供文件信息显示使用。跨档案的
+下一个/上一个导航（`readNextArchive()`/`readPreviousArchive()`）会从
+`localStorage` 中诸如 `currArchiveIds`/`nextArchiveIds` 的键恢复来源的 DataTables 页面，使用户回到
+出发位置。
+
+## 前端依赖
+
+下列版本逐字复制自基准 commit 时的 `package.json`（`^` 范围按声明原样——请以
+`package.json` 为准）。仅列出有直接前端用法的条目：
+
+| 包 | 版本（按 `package.json`） | 用途 |
+|---|---|---|
+| `preact` / `@preact/signals` | `^10.29.2` / `^2.9.2` | UI 片段（设置面板、toast），响应式阅读器状态。 |
+| `react-toastify` | `9.0.0-rc-2` | 兼容层背后的 toast 通知。 |
+| `sweetalert2` | `11.22.4` | 确认/输入对话框（`showPopUp()`）。 |
+| `jquery` | `3.6.0` | 旧版 DOM/事件层，仍作为全局变量引入。 |
+| `datatables.net` | `1.11.5` | 档案索引表格（`index_datatables.js`）。 |
+| `jquery-contextmenu` | `2.9.2` | 索引与阅读器戳记上的右键菜单。 |
+| `swiper` | `^14.0.2` | 索引轮播与多选轮播。 |
+| `marked` + `dompurify` | `^18.0.4` + `^3.4.13` | 安全地渲染 GitHub 更新日志 markdown。 |
+| `awesomplete` | `1.1.5` | 标签搜索自动补全。 |
+| `@jcubic/tagger` | `0.4.2` | 编辑页的标签输入。 |
+| `sortablejs` | `1.15.6` | 拖拽排序标签规则/条目。 |
+| `tippy.js` | `6.3.7` | 标签工具提示（`buildTagTooltip()`）。 |
+| `fscreen` | `1.2.0` | 全屏 API 封装。 |
+| `blueimp-file-upload` | `10.32.0` | 上传/备份/恢复文件组件。 |
+| `clsx` / `htm` | `1.1.1` / `^3.1.1` | 类名字符串 / 无 JSX 的 Preact 模板化。 |
+| `es-module-shims` | `^2.8.2` | import map polyfill。 |
+| `jqcloud2` / `clipboard` / `allcollapsible` / `raty-js` / `geist` / `inter-ui` / `@fortawesome/fontawesome-free` | `2.0.3` / `2.0.11` / `1.1.0` / `^4.3.0` / `1.0.0` / `3.19.3` / `^6.7.2` | 标签云（统计）、剪贴板按钮、可折叠区块、星级评分（阅读器）、字体、图标。 |
+
+在 i18n 方面，模板在渲染时用 `c.lh(...)` 翻译服务器端字符串（参见
+`templates/i18n.html.tt2`，它把这些查找转换为在 `/js/i18n.js` 提供的 `I18N` 词典）；
+客户端脚本通过生成的模板函数进行插值（例如
+`server.js` 的 `cleanDatabase()` 中的 `I18N.CleanDatabaseMsg(data.deleted)`），因此页面脚本很少硬编码用户可见文本。
+
+## 模板与主题
+
+- `templates/` 包含 26 个文件：24 个 Template Toolkit 模板（`.tt2`）外加 2 个生产环境错误页面
+  （`exception.production.html.ep`、`not_found.production.html.ep`，由 Mojolicious 的 `.ep` 处理器渲染）。
+  `templates/config.html.tt2` 由 `templates/templates_config/` 中的六个设置标签页组合而成
+  （`config_global`、`config_theme`、`config_security`、`config_files`、`config_tags`、`config_shinobu`）。
+  应用在 `lib/LANraragi.pm` 中将 Template Toolkit 设为默认渲染器（`default_handler('tt2')`）。
+- 主题是 `public/themes/` 下的普通样式表——基准时有五个：`ex.css`、`g.css`、`modern.css`、
+  `modern_clear.css`、`modern_red.css`。`lib/LANraragi/Utils/Generic.pm` 中的 `generate_themes_header()`
+  为每个主题输出一个 `<link>`（默认主题）或 `alternate stylesheet`（其余主题），并标注友好名称
+  （依次为 Sad Panda、H-Verse、Hachikuji、Yotsugi、Nadeko）；选中的主题作为 `theme` 键存储在
+  配置数据库中。放入该文件夹的任何 CSS 文件都会自动变为可选。
+- 共享的页面框架样式（`lrr.css`、`config.css` 及第三方 CSS）位于 `public/css/` 之下。

@@ -21,6 +21,7 @@
         "critic": "perlcritic ./lib/* ./script/* ./tools/install.pl",
         "backup-db": "perl ./script/backup",
         "get-version": "perl ./script/get_version",
+        "docs": "python3 docs/generate_docs.py",
         "tidy": "find . -name '*.pl' -o -name '*.pm' | xargs perltidy -b -bext='/'"
     },
     "repository": {

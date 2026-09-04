@@ -1,304 +1,157 @@
-# 插件系统架构
+# 插件系统
 
-> **分析文件**: `Utils/Plugins.pm`, `Model/Plugins.pm`, `Plugin/Metadata/EHentai.pm`
+> 基准 commit `2094cc1d`（2026-09-04）。事实已对照代码核实——生成时已逐条核对引文。
 
----
+## 概览
 
-## 🔌 插件系统概览
+LANraragi 插件是位于 `lib/LANraragi/Plugin/` 下的普通 Perl 包，通过一个
+`plugin_info()` 函数声明元数据。系统支持四种插件类型，各有一个必需方法，另外为通过
+注册表分发的第三方（"托管"）插件提供安装/卸载生命周期。执行机制位于
+`lib/LANraragi/Model/Plugins.pm`；基于 Redis 的查找/注册粘合代码位于
+`lib/LANraragi/Utils/Plugins.pm`。
 
-### 插件发现机制
+## 插件类型
 
-使用 `Module::Pluggable` 自动发现插件：
-```perl
-use Module::Pluggable require => 1, search_path => ['LANraragi::Plugin'];
-```
+| 类型 | 目录 | 数量 | 必需方法 | 角色 |
+|------|-----------|-------|-----------------|------|
+| `login` | `Plugin/Login/` | 4 | `do_login` | 返回一个内置了凭据/cookie 的 `Mojo::UserAgent` |
+| `metadata` | `Plugin/Metadata/` | 21 | `get_tags` | 为一个档案抓取或计算标签（可选地还有标题/摘要） |
+| `download` | `Plugin/Download/` | 3 | `provide_url` | 把页面 URL 转成直接下载 URL 或本地文件路径 |
+| `script` | `Plugin/Scripts/` | 4 | `run_script` | 从 Plugin Configuration 运行的一次性任意操作 |
 
----
+方法契约在列取时强制执行：`lib/LANraragi/Utils/Plugins.pm` 的 `get_plugins()`
+会跳过其类型所需方法缺失的包（`can('run_script')`、
+`can('get_tags')`、`can('provide_url')`、`can('do_login')`）。
 
-## 📋 插件类型定义
+## `plugin_info` 契约
 
-| 类型 | 必需方法 | 用途 | 数量 |
-|------|----------|------|------|
-| `metadata` | `get_tags` | 获取档案元数据 | 22 |
-| `login` | `do_login` | 网站认证 | 4 |
-| `download` | `provide_url` | 下载外部资源 | 3 |
-| `script` | `run_script` | 通用脚本执行 | 3 |
+每个插件从 `plugin_info()` 返回一个哈希。标准键（由内置插件声明）：`name`、`type`、
+`namespace`、`author`、`version`、`description` 和 `icon`（base64 data URI）。可选键：
 
----
+| 键 | 使用者 | 含义 |
+|-----|---------|---------|
+| `parameters` | 设置界面 | `{ type, desc, default_value }` 参数描述符构成的数组（按位置）或哈希（按名称） |
+| `oneshot_arg` | 元数据插件 | 每次运行参数的提示输入，例如图库 URL 覆盖 |
+| `login_from` | 所有类型 | 应注入其 UserAgent 的登录插件的命名空间 |
+| `cooldown` | 批量打标签界面 | 出于对 API 的礼貌，两次运行之间建议的延迟秒数 |
+| `url_regex` | 下载插件 | 决定此下载器认领哪些 URL 的正则表达式 |
 
-## 📝 plugin_info 契约
+其中两个需要精确说明：
 
-每个插件必须实现 `plugin_info()` 返回元数据：
+- **`cooldown` 仅是建议值。** 它由 `EHentai`（4 秒）、`MEMS`（4 秒）和 `Pixiv`
+  （1 秒）在其 `plugin_info` 中声明，唯一的消费者是前端批量打标签器
+  （`public/js/batch.js` 将其读作默认超时）。没有任何后端代码读取或强制执行它。
+- **`login_from` 是命名空间，不是模块名。** `lib/LANraragi/Model/Plugins.pm` 的
+  `exec_login_plugin()` 通过常规的注册路径查找它。
 
-```perl
-sub plugin_info {
-    return (
-        name        => "E-Hentai",           # Display name
-        type        => "metadata",           # Plugin type
-        namespace   => "ehplugin",           # Unique identifier
-        author      => "Difegue",            # Author
-        version     => "2.6",                # Version number
-        description => "Searches...",        # HTML description
-        icon        => "data:image/png;...", # Base64 icon
-        
-        # Optional fields
-        login_from  => "ehlogin",            # Dependent login plugin
-        cooldown    => 4,                    # Cooldown time (seconds)
-        url_regex   => "e-hentai\\.org",     # Download plugin URL match
-        oneshot_arg => "E-H Gallery URL",    # One-shot execution param description
-        
-        # Parameter definitions (array or Hash)
-        parameters  => [
-            { type => "string", desc => "Language" },
-            { type => "bool",   desc => "Use thumbnails" },
-        ],
-    );
-}
-```
+## 发现与注册
 
----
+两个机制协同工作：
 
-## 🔧 插件执行流程
+1. **编译期发现** —— `lib/LANraragi/Utils/Plugins.pm` 使用
+   `Module::Pluggable (search_path => ['LANraragi::Plugin'])`，它会找出四个插件
+   目录下的所有包（包括存在时的 `Managed/` 与 `Sideloaded/` 子目录）。
+2. **运行期注册表** —— `lib/LANraragi/Model/Plugins.pm` 的 `scan_plugins()`（在启动
+   时由 `lib/LANraragi.pm` 调用）将发现的类与 Redis 对账：它通过 `register_plugin()`
+   注册每个发现的命名空间，对重复命名空间或大小写冲突发出警告，并注销文件已从磁盘
+   消失的孤儿 `LRR_PLUGIN_*` 键（除非文件仍存在于磁盘上）。
 
-### 登录插件
+只有已注册的插件才可调用：`lib/LANraragi/Utils/Plugins.pm` 的 `get_plugin()`
+拒绝加载没有记录 `installed_path` 的命名空间，因此已卸载的插件保留其用户设置但不再
+可被调用。
 
-必需方法：`do_login`
-
-| 输入 | 描述 |
-|------|------|
-| `$params` | 用户定义的插件参数 |
-
-| 输出 | 描述 |
-|------|------|
-| `Mojo::UserAgent` | 配置好的 UA 对象（含 Cookie） |
-
-```perl
-sub do_login {
-    shift;
-    my ($params) = @_;
-    my $ua = Mojo::UserAgent->new;
-    $ua->cookie_jar->add(...);  # Add login cookies
-    return $ua;
-}
-```
-
-### 下载插件
-
-必需方法：`provide_url`
-必需元数据：`url_regex`
-
-| 输入 (`$lrr_info`) | 描述 |
-|--------------------|------|
-| `url` | 待下载的 URL |
-| `user_agent` | 预配置的 Mojo::UserAgent |
-| `tempdir` | 本地文件组装的临时目录 |
-
-| 输出 | 描述 |
-|------|------|
-| `download_url => "..."` | 直接下载 URL |
-| `file_path => "..."` | 本地文件路径（已下载） |
-
-```perl
-sub provide_url {
-    shift;
-    my $lrr_info = shift;
-    my $url = $lrr_info->{url};
-    # ... process URL ...
-    return ( download_url => "https://direct.link/file.zip" );
-    # OR
-    return ( file_path => "/path/to/local/file.zip" );
-}
-```
-
-### 脚本插件
-
-必需方法：`run_script`
-
-| 输入 (`$lrr_info`) | 描述 |
-|--------------------|------|
-| `oneshot_param` | 用户提供的运行时参数 |
-| `user_agent` | 预配置的 Mojo::UserAgent |
-
-| 输出 | 描述 |
-|------|------|
-| 任意哈希 | 直接返回给调用者 |
-| `error => "..."` | 错误消息 |
-
-```perl
-sub run_script {
-    shift;
-    my ($lrr_info, $params) = @_;
-    # ... perform operations ...
-    return ( total => $count, ids => \@list );
-}
-```
+## 执行流程
 
 ### 元数据插件
 
-```mermaid
-sequenceDiagram
-    participant API as Controller
-    participant Exec as Model::Plugins
-    participant Login as LoginPlugin
-    participant Meta as MetadataPlugin
-    participant DB as Redis
-    
-    API->>Exec: exec_metadata_plugin(plugin, id, args)
-    Exec->>DB: Get archive info (title, tags, thumbhash)
-    
-    alt Login required
-        Exec->>Login: do_login(args)
-        Login-->>Exec: Mojo::UserAgent (with Cookie)
-    end
-    
-    Exec->>Meta: get_tags(info_hash, args)
-    Meta-->>Exec: {tags, title?, summary?}
-    
-    Exec->>Exec: Apply tag rules
-    Exec->>Exec: Filter duplicate tags
-    Exec-->>API: {new_tags, title?, summary?}
-```
+`lib/LANraragi/Utils/Plugins.pm` 的 `use_plugin()` 分派到
+`lib/LANraragi/Model/Plugins.pm` 的 `exec_metadata_plugin()`，后者构建 `$lrr_info`
+哈希并调用 `$plugin->get_tags(\%lrr_info, %settings)`。元数据插件的 `$lrr_info`
+有七个字段：`archive_id`、`archive_title`、`existing_tags`、`thumbnail_hash`（缺失时
+当场经 `extract_thumbnail()` 重新生成）、`file_path`、`user_agent`（由
+`exec_login_plugin()` 从 `login_from` 构建）和 `oneshot_param`。插件返回
+`tags`/`title`/`summary`（或 `error`）；返回的标签在启用时经过标签规则过滤，与
+`existing_tags` 去重，并在 `archive-write:$id` 锁下写入。批量运行使用
+`exec_enabled_plugins_on_file()`，它会强制 `regexplugin` 命名空间
+（`Plugin/Metadata/RegexParse.pm`）最先运行。
 
-### $lrr_info 字段
+### 脚本插件
 
-| 字段 | 描述 |
-|------|------|
-| `archive_id` | 档案的内部 ID（40 字符 SHA1） |
-| `archive_title` | 用户输入的档案标题 |
-| `existing_tags` | LRR 中该档案已有的标签 |
-| `thumbnail_hash` | 档案首页图像的 SHA-1 哈希 |
-| `file_path` | 档案的文件系统路径 |
-| `oneshot_param` | 用户设置的一次性参数值 |
-| `user_agent` | 用于网络请求的 Mojo::UserAgent 对象（如依赖登录插件则预配置了 Cookie） |
+`exec_script_plugin()` 传入只含 `user_agent` 和 `oneshot_param` 的 `$lrr_info`，然后
+调用 `run_script(\%lrr_info, %settings)`。返回哈希为自由格式，经 API 原样呈现。
+本 fork 仓库新增的 `Plugin/Scripts/EhTagAutoUpdater.pm`（命名空间
+`ehtag_auto_updater`）即属此类型：它查询 EhTagTranslation/Database 的 GitHub releases
+API，下载 `db.text.json`，应用用户配置的文本替换，并更新系统数据库。
 
----
+### 下载插件
 
-## 💾 插件配置存储
+由 URL 摄入触发（`lib/LANraragi/Utils/Minion.pm` 中的 `download_url` Minion 任务）。
+`Utils/Plugins.pm` 的 `get_downloader_for_url()` 将 URL 与每个已启用下载器的
+`url_regex` 匹配；随后 `exec_download_plugin()` 调用
+`provide_url(\%lrr_info, ...)`，`$lrr_info` 含有 `user_agent`、`url` 和 `tempdir`。
+插件返回 `download_url`（LRR 用该插件的 UserAgent 下载）或 `file_path`（插件已自行
+取回文件）。无论哪种，结果都会交给 `LANraragi::Model::Upload::handle_incoming_file`，
+并带上原始 URL 的 `source:` 标签。
 
-### Redis 键格式
+### 登录插件
 
-```
-LRR_PLUGIN_{NAMESPACE}  (Hash)
-├── enabled: "1" | "0"
-├── param1: "value1"
-├── param2: "value2"
-└── customargs: "[...]"  (legacy format, JSON array)
-```
+`exec_login_plugin($namespace)` 加载插件及其已保存的参数，然后调用 `do_login`。
+返回值必须是 `Mojo::UserAgent`——其他任何值都会被记录并丢弃，改用全新的匿名
+UserAgent。登录插件没有 `$lrr_info`；它们只接收自己配置的参数。
 
-### 参数迁移（旧 → 新）
+## 配置存储
 
-```perl
-# Old format: positional params (JSON array)
-customargs => '["value1", "value2"]'
+每个插件的设置存放在**配置数据库**（来自
+`LANraragi::Model::Config->get_redis_config` 的连接，与档案数据库不同）上一个名为
+`LRR_PLUGIN_{uc namespace}` 的 Redis 哈希中。`Utils/Plugins.pm` 的
+`get_plugin_parameters()` 先填入 `default_value`，再覆盖以已保存的值。存在两种参数
+风格：
 
-# New format: named params (Hash fields)
-param_name => "value"
-```
+- **按位置（旧式）：** `parameters` 是数组；保存的值是 `customargs` 字段下的一个
+  JSON 数组，以 `@$settings{customargs}` 传给插件。
+- **按名称（现行）：** `parameters` 是哈希；每个键作为独立字段存入同一个 Redis
+  哈希。声明了 `to_named_params` 的插件会在首次读取时由
+  `convert_to_named_params_and_persist()` 迁移其旧的 `customargs`。
 
-### to_named_params 字段 (v0.9.3+)
+同一个哈希还携带注册溯源信息：`installed_path`、`installed_version`、
+`installed_registry`、`installed_sha256`、`type` 以及 `enabled` 标志。
 
-将插件从位置参数转换为命名参数时，添加 `to_named_params` 以保留现有用户配置：
+## 托管插件、注册表与旁加载
 
-```perl
-# Add to plugin_info to convert old config automatically
-to_named_params => ['doomsday', 'iterations'],  # Old param order
-parameters => {
-    'iterations' => {type => "int",  desc => "Number of iterations"},
-    'doomsday'   => {type => "bool", desc => "Enable DOOMSDAY"},
-    'salvation'  => {type => "bool", desc => "New param (not in migration)"}
-}
-```
+`Utils/Plugins.pm` 的 `infer_plugin_origin()` 把每个插件归类为 `builtin`（随
+`Login/`、`Metadata/`、`Download/`、`Scripts/` 发行）、`managed`（从注册表安装到
+`Plugin/Managed/{Type}/` 之下，依照 `Utils/Registry.pm` 中的 `MANAGED_TYPE_DIRS`
+映射）或 `sideloaded`（手工上传到 `Plugin/Sideloaded/` 之下——`Controller/Plugins.pm`
+在上传时创建该目录，并校验包声明了 `LANraragi::Plugin::…` 类型）。
 
-> **注意**：`to_named_params` 仅在转换后首次加载时需要，后续版本可移除。
+注册表是 `registry.json` 索引的 git/CDN/本地来源，由
+`lib/LANraragi/Model/Registry.pm` 管理（`create_registry`、`get_registry`、
+`refresh_registry`、`get_default_registry`）。`Model/Setup.pm` 会种下一个默认
+注册表：**Ougi**（`https://github.com/Difegue/Ougi.git`）。`Utils/Registry.pm` 提供
+获取与校验原语（`fetch_registry_resource`、`validate_registry_index`、
+`find_package_conflict`、`find_namespace_conflict`、`resolve_max_version`）。
 
----
+安装是事务性的：`Model/Plugins.pm` 的 `install_plugin()`（由 `install_plugin`
+Minion 任务驱动，经 `exec_with_lock_pure` 的 `plugin-write:{NAMESPACE}` 锁串行化）
+获取产物，对照索引校验其 SHA-256，将声明的包名与预期的 `Managed/{Type}/` 路径核对，
+写入文件并带有分阶段回滚（先备份上一个产物，失败时由一段 Lua 脚本恢复溯源字段），
+最后运行 `check_plugin_loads()`——一个 20 秒超时、执行 `script/check_plugin_loads.pl`
+的子进程，用以证明模块能通过编译。只有托管插件可升级；跨注册表覆盖需要 `force`
+标志。`uninstall_plugin()` 删除文件与溯源信息（用户设置保留），并拒绝触碰内置插件。
 
-## 🧪 EHentai 插件分析（代表性示例）
+## 内置插件清单
 
-### 插件功能
+截至基准 commit，随发行内置的 32 个插件为：
 
-1. **source 标签优先**：优先使用已存在的 `source:e-hentai.org/g/...`
-2. **缩略图反向搜索**：使用 SHA-1 哈希搜索
-3. **gID 标题搜索**：从标题提取 `[1234567]`
-4. **标题文本搜索**：回退方案
+- **登录（4 个）：** `EHentai.pm`、`Fakku.pm`、`Pixiv.pm`、`nHentai.pm`
+- **元数据（21 个）：** `Chaika.pm`、`ChaikaFile.pm`、`ComicInfo.pm`、`CopyArchiveTags.pm`、
+  `CopyTags.pm`、`DateAdded.pm`、`EHDLInfo.pm`、`EHentai.pm`、`Eze.pm`、`Fakku.pm`、
+  `GalleryDL.pm`、`HDoujin.pm`、`HatH.pm`、`Hentag.pm`、`Hitomi.pm`、`Koromo.pm`、`Ksk.pm`、
+  `MEMS.pm`、`Pixiv.pm`、`RegexParse.pm`、`nHentai.pm`
+- **下载（3 个）：** `Chaika.pm`、`EHentai.pm`、`Pixiv.pm`
+- **脚本（4 个）：** `EhTagAutoUpdater.pm`、`FolderToCat.pm`、`SourceFinder.pm`、
+  `nHentaiSourceConverter.pm` —— 其中 `EhTagAutoUpdater.pm` 为本 fork 仓库专有，
+  而非上游 LANraragi 自带。
 
-### 搜索策略
-
-```perl
-# Priority: oneshot_param > source tag > thumbnail search > gID search > title search
-if ( $lrr_info->{oneshot_param} =~ /g\/(\d+)\/([0-z]+)/ ) { ... }
-elsif ( $lrr_info->{existing_tags} =~ /source:.*e-hentai.org\/g\/(\d+)\/([0-z]+)/ ) { ... }
-else { lookup_gallery(...) }
-```
-
-### 速率限制
-
-```perl
-cooldown => 4  # 4 second cooldown
-
-# Detect EH rate limit warning
-if ( index( $dom->to_string, "You are opening" ) != -1 ) {
-    my $rand = 15 + int( rand( 51 - 15 ) );  # 15-50 second random wait
-    sleep($rand);
-}
-```
-
----
-
-## 📝 插件代码示例
-
-### 日志记录
-```perl
-use LANraragi::Utils::Logging qw(get_plugin_logger);
-my $logger = get_plugin_logger();
-
-$logger->debug("Only shows in Debug Mode");
-$logger->info("Normal log");
-$logger->warn("Warning");
-$logger->error("Error");
-```
-
-### HTTP 请求
-```perl
-my $ua = $lrr_info->{user_agent};
-
-# GET request
-$ua->get("http://example.com")->result->body;
-
-# POST JSON request
-my $rep = $ua->post(
-    "https://api.example.com" => json => { key => "value" }
-)->result;
-my $json = $rep->json;  # Decoded hash
-```
-
-### 读取 Redis 值
-```perl
-my $redis = LANraragi::Model::Config->get_redis;
-my $value = $redis->get("key");
-```
-
-### 从归档中提取文件
-```perl
-use LANraragi::Utils::Archive qw(is_file_in_archive extract_file_from_archive);
-
-my $info_path = is_file_in_archive($file, "info.json");
-if ($info_path) {
-    my $filepath = extract_file_from_archive($file, $info_path);
-    # Use extracted file...
-    unlink $filepath;  # Delete when done
-}
-```
-
----
-
-## ✅ 总结
-
-| 发现 | 详情 |
-|------|------|
-| **插件发现** | Module::Pluggable 自动扫描 |
-| **4 种类型** | metadata, login, download, script |
-| **配置存储** | Redis Hash (`LRR_PLUGIN_{NS}`) |
-| **登录依赖** | `login_from` 字段指定 |
-| **速率限制** | `cooldown` 字段 + 动态等待 |
-| **参数迁移** | 位置参数 → 命名参数 |
+本页多处引用的 `Utils/Plugins.pm` 与 `Utils/Registry.pm` 内部细节见
+[03_utils.md](03_utils.md)。
