@@ -206,7 +206,16 @@ LIMIT` 分页）；`update_archive_list()`/`add_to_tankoubon()`/`remove_from_tan
   在一个 WATCH/MULTI 事务中重建整个搜索数据库：`flushdb()`，然后逐
   档案/单行本构建 `INDEX_<tag>` 集合、`LRR_TITLES`、`LRR_STATS`（标签计数器）、`LRR_UNTAGGED`、
   `LRR_NEW`、`LRR_TANKGROUPED`，最后写入 `LAST_JOB_TIME` 时间戳。还暴露针对 `LRR_URLMAP` 的
-  `is_url_recorded()`。
+  `is_url_recorded()`。读取侧为 `/stats` 页面和标签统计 API 供数：`get_archive_count()` 是
+  `scard(LRR_TANKGROUPED)`（单行本替代其成员档案计数）、`compute_content_size()` 把每个
+  `arcsize` 哈希字段求和为 GB（两位小数），`get_page_stat()` 读取 `LRR_TOTALPAGESTAT`；标签
+  云本身由客户端从 `GET /api/database/stats` 抓取——`serve_tag_stats()`（`minweight`，默认 1；
+  `hide_excluded_namespaces`，默认关——为 true 时排除 `excludednamespaces` 配置，默认
+  `source, date_added`）经 `build_tag_stats()` 用
+  `zrangebyscore($minweight, "+inf", WITHSCORES)` 从 `LRR_STATS` 切片，返回
+  `[{namespace, text, weight}]`——标签文本为小写，命名空间前缀拆分进独立字段。`stats.js` 与
+  首页建议以 `minweight=2&hide_excluded_namespaces=true` 请求它；编辑页使用 `minweight=2`
+  且不隐藏。
 - **`Metrics.pm`** —— Prometheus 支持，由 `enablemetrics` 设置门控：
   `collect_request_metrics()`（经由安装在 `lib/LANraragi.pm` 中的 `after_dispatch`
   钩子，其 `before_dispatch` 对应钩子只暂存请求起始时间）、按 30 秒循环定时器运行的 `collect_process_metrics()` 和

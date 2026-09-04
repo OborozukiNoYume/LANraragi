@@ -206,6 +206,17 @@ and the default-registry accessors. `lib/LANraragi.pm` refreshes every registry 
   rebuilds the entire search DB in one WATCH/MULTI transaction: `flushdb()`, then per
   archive/tank the `INDEX_<tag>` sets, `LRR_TITLES`, `LRR_STATS` (tag counters), `LRR_UNTAGGED`, `LRR_NEW`,
   `LRR_TANKGROUPED`, ending by stamping `LAST_JOB_TIME`. Also exposes `is_url_recorded()` against `LRR_URLMAP`.
+  The read side feeds the `/stats` page and the tag-statistics API: `get_archive_count()` is
+  `scard(LRR_TANKGROUPED)` (tanks count in place of their archives), `compute_content_size()`
+  sums every `arcsize` hash field into GB (two decimals), and `get_page_stat()` reads
+  `LRR_TOTALPAGESTAT`; the tag cloud itself is fetched client-side from
+  `GET /api/database/stats`, where `serve_tag_stats()` (`minweight`, default 1;
+  `hide_excluded_namespaces`, default off — when true it excludes the `excludednamespaces`
+  config, `source, date_added` by default) returns `[{namespace, text, weight}]` sliced from
+  `LRR_STATS` via `zrangebyscore($minweight, "+inf", WITHSCORES)` in `build_tag_stats()` — tag
+  text is lowercased with the namespace prefix split into its own field. `stats.js` and the
+  index suggestions request it with `minweight=2&hide_excluded_namespaces=true`; the edit page
+  uses `minweight=2` without hiding.
 - **`Metrics.pm`** — Prometheus support, gated by the `enablemetrics` setting: `collect_request_metrics()` (via
   the `after_dispatch` hook installed in `lib/LANraragi.pm`, whose `before_dispatch` counterpart only stashes
   the request start time), `collect_process_metrics()` and
