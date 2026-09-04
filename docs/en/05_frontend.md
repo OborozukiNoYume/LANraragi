@@ -126,6 +126,37 @@ fileinfo display. Cross-archive
 next/prev navigation (`readNextArchive()`/`readPreviousArchive()`) restores the originating DataTables page from
 `localStorage` keys such as `currArchiveIds`/`nextArchiveIds` so the user lands back where they started.
 
+### Rendering pages: double-page, manga, and infinite scroll
+
+The reader never reorders `state.pages`; modes only change how a page index is projected onto the
+DOM. Standard view has two `<img>` slots (`#img`, `#img_doublepage`) inside the flex `#display`
+container — an empty `src` hides the second slot via CSS. In double-page mode (active only when
+`currentPage` is neither the first nor the last page) the two images render side by side under the
+`double-mode` class, and a spread whose either half is landscape ("widespread") collapses to that
+single image with `showingSinglePage = true`; navigating backwards then steps back one extra page
+to land on the start of the previous spread. Manga mode swaps which half of a spread goes into
+which slot and inverts `changePage()` directions (including first/last); the pages array itself is
+untouched. There is no blank-page filler — pair balancing is purely the widespread fallback plus
+that boundary rule.
+
+Infinite scroll replaces this pipeline entirely: one real `<img id="page-N">` per page is
+appended, an `IntersectionObserver` (threshold 0.5) updates `currentPage` and calls
+`updateProgress()` as a page crosses mid-viewport, manga/double modes are forced off, and archives
+tagged `webtoon` get zero-margin styling. `goToPage()` clamps the index, renders (or scrolls in
+infinite mode), then always runs `preloadImages()`, `applyContainerWidth()`,
+`updateArchiveOverlay()` and `updateProgress()` — which reports `currentPage + 1` (1-indexed), so
+a two-page spread records only its first page. Chapters resolve through `findChapterForPage()`
+over the `{startPage, endPage, chapters}` tree that `buildArchiveChapters()` in `common.js` builds
+from the archive's `toc` entries (`{page, name}`), with tanks nesting per-archive chapters shifted
+by their page offset. Failure handling is thin by design: page images have no `onerror` handler,
+and a whole-archive load failure shows `flubbed.gif` plus an error heading, while a 423 on a
+progress PUT is swallowed silently.
+
+The auto-next-page timer is a 1-second `setInterval` countdown (interval default 10 s, editable in
+the options panel); at zero it turns the page — or crosses into the next/previous archive at the
+boundary, resuming via a `sessionStorage autoNextPage` flag and holding a wake lock — and any
+manual page turn resets the countdown.
+
 ## Frontend dependencies
 
 Versions below are copied verbatim from `package.json` at the baseline commit (`^` ranges as declared — treat

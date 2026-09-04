@@ -125,6 +125,31 @@ DOM。它们都遵循相同形态（`import * as Server from "./mod/server.js"; 
 `localStorage` 中诸如 `currArchiveIds`/`nextArchiveIds` 的键恢复来源的 DataTables 页面，使用户回到
 出发位置。
 
+### 页面渲染：双页、漫画模式与无限滚动
+
+阅读器从不重排 `state.pages`；各种模式只改变页索引到 DOM 的投影方式。标准视图在弹性容器
+`#display` 内有两个 `<img>` 槽位（`#img`、`#img_doublepage`）——空的 `src` 会经 CSS 隐藏第二个
+槽位。双页模式（仅在 `currentPage` 既非首页也非末页时生效）让两张图以 `double-mode` 类并排
+渲染；当跨页的任一半是横图（"widespread"）时，整个跨页收缩为该单图并置
+`showingSinglePage = true`，此后向后导航会多退一页以落在上一个跨页的起点。漫画模式交换跨页
+两半进入哪个槽位，并反转 `changePage()` 的方向（含首/末）；`pages` 数组本身不动。这里没有
+空白页填充——配对平衡完全依靠横图回退加这条边界规则。
+
+无限滚动则彻底替换这条流水线：每页追加一个真实的 `<img id="page-N">`，一个
+`IntersectionObserver`（阈值 0.5）在页面越过视口中线时更新 `currentPage` 并调用
+`updateProgress()`，漫画/双页模式被强制关闭，带 `webtoon` 标签的档案获得零边距样式。
+`goToPage()` 会钳制索引、渲染（无限滚动模式则滚动），随后总是运行 `preloadImages()`、
+`applyContainerWidth()`、`updateArchiveOverlay()` 与 `updateProgress()`——后者上报
+`currentPage + 1`（1 起始），因此一个两页跨页只记录其第一页为已读。章节经 `findChapterForPage()`
+在 `common.js` 中 `buildArchiveChapters()` 由档案 `toc` 条目（`{page, name}`）构建的
+`{startPage, endPage, chapters}` 树上解析，单行本则按页偏移嵌套各档案的章节。失败处理刻意从
+简：页面图片没有 `onerror` 处理器，整档加载失败显示 `flubbed.gif` 加错误标题，进度 PUT 的
+423 则被静默吞掉。
+
+自动翻页定时器是 1 秒一次的 `setInterval` 倒计时（间隔默认 10 秒，可在选项面板调整）；归零时
+翻页——或在边界处跨入下一个/上一个档案，经 `sessionStorage autoNextPage` 标志恢复并持有
+wake lock——任何手动翻页都会重置倒计时。
+
 ## 前端依赖
 
 下列版本逐字复制自基准 commit 时的 `package.json`（`^` 范围按声明原样——请以
