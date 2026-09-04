@@ -225,6 +225,36 @@ The `filter` string is parsed by `compute_search_filter()` in `lib/LANraragi/Mod
 | `DELETE` | `/tankoubons/{id}/{archive}` | `api-tankoubon#remove_from_tankoubon` | API key | 🔑 Remove an Archive from a Tankoubon |
 | `PUT` | `/tankoubons/{id}/{archive}` | `api-tankoubon#add_to_tankoubon` | API key | 🔑 Add an Archive to a Tankoubon |
 
+## The misc endpoints in detail
+
+`GET /api/info` is the odd one out among the OpenAPI operations: its handler
+(`serve_serverinfo()` in `lib/LANraragi/Controller/Api/Other.pm`) skips `openapi->valid_input`
+and renders plain JSON. It forwards server state in one shot — `name` and `motd` (the
+`htmltitle`/`motd` config fields, XML-escaped), `version`/`version_name`/`version_desc` (from
+`package.json` via the `LRR_VERSION` helpers), the booleans `has_password`, `debug_mode`,
+`nofun_mode`, `server_resizes_images`, `authenticated_progress`, `server_tracks_progress` (the
+inverse of the `localprogress` setting) and `restart_required` (from `LRR_SERVER`), plus
+`archives_per_page` (`pagesize`), `total_pages_read` (`LRR_TOTALPAGESTAT`), `total_archives`
+(`scard LRR_TANKGROUPED`), `cache_last_cleared` (the `created` field of `LRR_SEARCHCACHE`) and
+`excluded_namespaces`. The frontend's `index.js` is its only consumer: it drives the GitHub
+release version check, reader progress-tracking setup and the page size.
+
+The remaining misc endpoints have a few non-obvious edges:
+
+- `POST /api/download_url` always answers `success: 1` with a job id when a URL is present —
+  duplicate rejection happens inside the Minion task, which checks `is_url_recorded()` against
+  `LRR_URLMAP` and finishes with `success: 0, message: "URL already downloaded!"`, visible only
+  through job polling.
+- `DELETE /api/tempfolder` does not delete arbitrary temp files: it clears the PageCache
+  (`PageCache::clear()`), and its `newsize` response field is hardcoded to `0` even though the
+  spec describes it as the post-cleanup folder size.
+- `POST /api/plugins/use` and `/api/plugins/queue` have no lock/423 path; plugin errors come
+  back as HTTP 200 with `success: 0`. `use_plugin()` in `lib/LANraragi/Utils/Plugins.pm` only
+  dispatches `script` and `metadata` types — anything else yields an empty `data` object.
+- `GET /api/plugins/{type}` accepts `all` alongside the four types and returns each plugin's
+  `plugin_info` augmented with `parameters` (as a name-bearing array), `registry`, `sha256`
+  and `origin` — but no `enabled` flag.
+
 ## Routes outside the OpenAPI spec
 
 Three HTTP routes relevant to API consumers are registered directly in `apply_routes()` in `lib/LANraragi/Utils/Routing.pm` and therefore do not appear in `tools/openapi.yaml` or the table above:

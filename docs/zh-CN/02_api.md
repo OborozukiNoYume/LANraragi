@@ -225,6 +225,32 @@
 | `DELETE` | `/tankoubons/{id}/{archive}` | `api-tankoubon#remove_from_tankoubon` | API key | 🔑 从合集中移除档案 |
 | `PUT` | `/tankoubons/{id}/{archive}` | `api-tankoubon#add_to_tankoubon` | API key | 🔑 向合集添加档案 |
 
+## misc 端点详解
+
+在 OpenAPI 操作中，`GET /api/info` 是个例外：它的处理器（`lib/LANraragi/Controller/Api/Other.pm`
+中的 `serve_serverinfo()`）跳过 `openapi->valid_input`，直接渲染普通 JSON。它一次性转发
+服务器状态——`name` 与 `motd`（`htmltitle`/`motd` 配置字段，经 XML 转义）、
+`version`/`version_name`/`version_desc`（经 `LRR_VERSION` 助手取自 `package.json`）、布尔值
+`has_password`、`debug_mode`、`nofun_mode`、`server_resizes_images`、`authenticated_progress`、
+`server_tracks_progress`（`localprogress` 设置的反值）与 `restart_required`（取自
+`LRR_SERVER`），外加 `archives_per_page`（`pagesize`）、`total_pages_read`
+（`LRR_TOTALPAGESTAT`）、`total_archives`（`scard LRR_TANKGROUPED`）、`cache_last_cleared`
+（`LRR_SEARCHCACHE` 的 `created` 字段）以及 `excluded_namespaces`。前端的 `index.js` 是它
+唯一的消费者：GitHub 发行版版本检查、阅读器进度跟踪设置与页面大小都由它驱动。
+
+其余 misc 端点有几处非显而易见的边角：
+
+- `POST /api/download_url` 在 URL 存在时总是回答 `success: 1` 并附带任务 id——重复拒绝发生
+  在 Minion 任务内部：它对照 `LRR_URLMAP` 检查 `is_url_recorded()`，并以
+  `success: 0, message: "URL already downloaded!"` 结束，只能通过任务轮询看到。
+- `DELETE /api/tempfolder` 并不删除任意临时文件：它清空 PageCache（`PageCache::clear()`），
+  其响应中的 `newsize` 字段被硬编码为 `0`，尽管规格把它描述为清理后的文件夹大小。
+- `POST /api/plugins/use` 与 `/api/plugins/queue` 没有锁/423 路径；插件错误以 HTTP 200 加
+  `success: 0` 返回。`lib/LANraragi/Utils/Plugins.pm` 中的 `use_plugin()` 只分派 `script` 与
+  `metadata` 两种类型——其他类型只会得到空的 `data` 对象。
+- `GET /api/plugins/{type}` 除四种类型外还接受 `all`，返回每个插件的 `plugin_info`，并增补
+  `parameters`（带名称的数组）、`registry`、`sha256` 与 `origin`——但没有 `enabled` 标志。
+
 ## OpenAPI 规格之外的路由
 
 三条与 API 使用者相关的 HTTP 路由直接注册在 `lib/LANraragi/Utils/Routing.pm` 的 `apply_routes()` 中，因此不会出现在 `tools/openapi.yaml` 或上表中：
