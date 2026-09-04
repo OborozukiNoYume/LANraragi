@@ -6,6 +6,7 @@ use open ':std', ':encoding(UTF-8)';
 
 use Mojo::Base 'Mojolicious';
 use Mojo::File;
+use Mojo::JSON;
 use Storable;
 use Sys::Hostname;
 use Config;
@@ -23,6 +24,9 @@ use LANraragi::Utils::I18NInitializer;
 
 use LANraragi::Model::Search;
 use LANraragi::Model::Config;
+use LANraragi::Model::Plugins;
+use LANraragi::Model::Registry;
+use LANraragi::Model::Server;
 use LANraragi::Model::Setup      qw(first_install_actions);
 use LANraragi::Model::Metrics;
 
@@ -75,6 +79,9 @@ sub startup {
     $self->helper( LRR_VERSION => sub { return $version; } );
     $self->helper( LRR_VERNAME => sub { return $vername; } );
     $self->helper( LRR_DESC    => sub { return $descstr; } );
+
+    #Helper to JSON-encode a value for safe embedding in templates
+    $self->helper( json_esc => sub { shift; return Mojo::JSON::to_json(shift); } );
 
     #Helper to build logger objects quickly
     $self->helper(
@@ -133,6 +140,25 @@ sub startup {
     # Route Mojolicious/plugin logs (including OpenAPI validation warnings)
     # through LRR's rotating logger pipeline.
     $self->log( get_logger( "Mojolicious", "mojo" ) );
+
+    # Reconcile discovered plugins with Redis state.
+    my $redis_config = $self->LRR_CONF->get_redis_config;
+    LANraragi::Model::Plugins::scan_plugins($redis_config);
+
+    # Refresh plugin registries at server start. 
+    # This doesn't really help long-running servers, but those can just hit manual refreshes
+    # in the Registry UI. 
+    foreach my $registry ( LANraragi::Model::Registry::get_registry_list($redis_config) ) {
+        my $registry_id = $registry->{id};
+        my ( $status, undef, $error ) = LANraragi::Model::Registry::refresh_registry( $registry_id, $redis_config );
+        unless ( $status == 200 ) {
+            $self->LRR_LOGGER->warn("Startup refresh of registry '$registry_id' failed: $error");
+        }
+    }
+
+    # Reset restart flag.
+    LANraragi::Model::Server::clear_restart_pending($redis_config);
+    $redis_config->quit();
 
     #Plugin listing
     my @plugins = get_plugins("metadata");
@@ -252,6 +278,27 @@ sub startup {
             LANraragi::Model::Metrics::collect_process_metrics( "http" );
             LANraragi::Model::Metrics::flush_request_metrics_to_redis();
         });
+
+        # Manage Mojo worker lifecycles
+        $self->hook(
+            before_server_start => sub {
+                my ( $server, $app ) = @_;
+
+                # track all active workers.
+                $server->on(
+                    spawn => sub {
+                        my ( $prefork, $pid ) = @_;
+                        LANraragi::Model::Metrics::register_worker($pid);
+                    }
+                );
+                $server->on(
+                    reap => sub {
+                        my ( $prefork, $pid ) = @_;
+                        LANraragi::Model::Metrics::unregister_worker($pid);
+                    }
+                );
+            }
+        );
 
         $self->LRR_LOGGER->info("Metrics collection is enabled.");
 

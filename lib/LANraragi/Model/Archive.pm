@@ -15,12 +15,13 @@ use File::Path  qw(remove_tree);
 use File::Basename;
 use File::Copy "cp";
 use File::Path qw(make_path);
+use Mojo::IOLoop;
 
 use LANraragi::Utils::Generic    qw(render_api_response);
 use LANraragi::Utils::String     qw(trim trim_CRLF);
 use LANraragi::Utils::TempFolder qw(get_temp);
 use LANraragi::Utils::Logging    qw(get_logger);
-use LANraragi::Utils::Archive    qw(extract_single_file extract_single_file extract_thumbnail);
+use LANraragi::Utils::Archive    qw(extract_single_file extract_thumbnail is_cbw cbw_prefetch);
 use LANraragi::Utils::Database   qw(invalidate_cache set_title set_tags set_summary get_archive_json get_archive_json_multi);
 use LANraragi::Utils::PageCache  qw(fetch put);
 use LANraragi::Utils::Redis      qw(redis_decode redis_encode);
@@ -45,6 +46,7 @@ sub get_title ($id) {
 # Functions used when dealing with archives.
 
 # Generates an array of all the archive JSONs in the database that have existing files.
+# This doesn't include Tanks. 
 sub generate_archive_list {
 
     my $redis = LANraragi::Model::Config->get_redis;
@@ -110,7 +112,7 @@ sub generate_page_thumbnails {
 
     # Get the number of pages in the archive
     my $redis = LANraragi::Model::Config->get_redis;
-    my $pages = $redis->hget( $id, "pagecount" );
+    my $pages = $redis->hget( $id, "pagecount" ) // 0;
 
     my $subfolder = substr( $id, 0, 2 );
     my $thumbname = "$thumbdir/$subfolder/$id.$format";
@@ -245,6 +247,12 @@ sub get_page_data ( $id, $path ) {
         $redis->quit();
         $content = extract_single_file( $archive, $path );
         put( $cachekey, $content );
+
+        # For CBW archives, prefetch upcoming pages asynchronously so they're
+        # cache hits when the user navigates forward.
+        if ( is_cbw($archive) ) {
+            Mojo::IOLoop->next_tick( sub { cbw_prefetch( $archive, $id, $path, 3 ) } );
+        }
     }
     return $content;
 }
@@ -391,6 +399,22 @@ sub delete_archive ($id) {
     foreach my $cat ( LANraragi::Model::Category::get_categories_containing_archive($id) ) {
         my $catid = %{$cat}{"id"};
         LANraragi::Model::Category::remove_from_category( $catid, $id );
+    }
+
+    # Remove Stamps
+    my $stamps    = $redis->hget( $id, "stamps" );
+    my @stamps;
+
+    if ( $redis->hexists( $id, "stamps" )) {
+        eval { @stamps = @{ decode_json($stamps) } };
+        if ($@) {
+            die;
+        }
+        foreach my $stamp ( @stamps ) {
+            $redis->del($stamp);
+        }
+    } else {
+        # Stamps attribute was not set, do nothing.
     }
 
     $redis->del($id);

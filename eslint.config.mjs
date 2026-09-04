@@ -1,7 +1,8 @@
 import js from "@eslint/js";
-import { defineConfig } from "eslint/config";
+import { defineConfig, globalIgnores } from "eslint/config";
 import stylistic from "@stylistic/eslint-plugin";
 import globals from "globals";
+import importX from 'eslint-plugin-import-x';
 
 // Magical typing definition so rule intellisense works https://github.com/microsoft/vscode-eslint/issues/1122
 /**
@@ -9,10 +10,10 @@ import globals from "globals";
  */
 const config = {
     files: ["**/*.js"],
-    ignores: ["public/js/vendor/*.js"],
     plugins: {
         js,
         "@stylistic": stylistic,
+        'import-x': importX,
     },
     extends: ["js/recommended"],
 
@@ -22,28 +23,10 @@ const config = {
         globals: {
             ...globals.browser,
             ...globals.jquery,
-            // LANraragi specific
-            // TODO rework all main scripts to no longer store data in the global scope, probably transition to ES modules
-            Backup: "readonly",
-            Batch: "readonly",
-            Category: "readonly",
-            Common: "readonly",
-            Config: "readonly",
-            Duplicates: "readonly",
-            Edit: "readonly",
-            I18N: "readonly",
-            Index: "readonly",
-            IndexTable: "readonly",
-            Logs: "readonly",
-            LRR: "readonly",
-            Plugins: "readonly",
-            Reader: "readonly",
-            Server: "readonly",
-            Stats: "readonly",
             // external packages
             Awesomplete: "readonly",
-            marked: "readonly",
-            Swiper: "readonly",
+            Raty: "readonly",
+            Sortable: "readonly",
             tagger: "readonly",
             tippy: "readonly",
         },
@@ -52,7 +35,7 @@ const config = {
     rules: {
         "func-names": ["error", "never"],
         "no-alert": "off",
-        "no-console": "warn",
+        "no-console": "off",
         "no-else-return": "off",
         "no-implicit-globals": "error",
         "no-multi-assign": ["error", {
@@ -78,10 +61,24 @@ const config = {
             array: false,
         }],
 
+        "import-x/no-unresolved": [
+            "error",
+            {
+                ignore: [
+                    "i18n",
+                ]
+            }
+        ],
+
+        "@stylistic/semi": ["error", "always"],
         "@stylistic/indent": ["error", 4, { "SwitchCase": 1 }],
         "@stylistic/one-var-declaration-per-line": ["error", "initializations"],
         "@stylistic/quotes": ["error", "double", { "allowTemplateLiterals": true }],
     },
 };
 
-export default defineConfig(config);
+export default defineConfig([
+    importX.flatConfigs.recommended,
+    globalIgnores(["public/js/vendor/**", "tests/samples/*"]),
+    config,
+]);

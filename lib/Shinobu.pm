@@ -13,9 +13,10 @@ use utf8;
 use feature qw(say signatures);
 no warnings 'experimental::signatures';
 
+use local::lib;
+
 use FindBin;
 use MCE::Loop;
-use Sys::CpuAffinity;
 use Storable   qw(lock_store);
 use Mojo::JSON qw(to_json);
 use Config;
@@ -74,6 +75,10 @@ sub initialize_from_new_process {
     my $userdir = LANraragi::Model::Config->get_userdir;
     my $metrics_enabled = LANraragi::Model::Config->enable_metrics;
 
+    if ($metrics_enabled) {
+        LANraragi::Model::Metrics::unregister_shinobu();
+    }
+
     $logger->info("Shinobu File Watcher started.");
     $logger->info("Content folder is $userdir.");
 
@@ -83,7 +88,7 @@ sub initialize_from_new_process {
     # Add watcher to content directory
     my $contentwatcher = File::ChangeNotify->instantiate_watcher(
         directories     => [$userdir],
-        filter          => qr/\.(?:zip|rar|7z|tar|tar\.gz|lzma|xz|cbz|cbr|cb7|cbt|pdf|epub|tar\.zst|zst)$/i,
+        filter          => qr/\.(?:zip|rar|7z|tar|tar\.gz|lzma|xz|cbz|cbr|cb7|cbt|cbw|pdf|epub|tar\.zst|zst)$/i,
         follow_symlinks => 1,
         exclude         => [ 'thumb', '.' ],                                                                   #excluded subdirs
     );
@@ -246,7 +251,7 @@ sub update_filemap_entry ( $logger, $id, $file, $redis_cfg, $redis_arc ) {
 
     $logger->debug("Computed ID is $id.");
     unless ( -e $file ) {
-        # A TOCTOU check, if the file was deleted after ID computation but before a lock was acquired.
+        # A race condition check, if the file was deleted after ID computation but before a lock was acquired.
         $logger->warn("File does not exist; giving up on adding it to the filemap: $file");
         return;
     }
@@ -262,6 +267,10 @@ sub update_filemap_entry ( $logger, $id, $file, $redis_cfg, $redis_arc ) {
             $logger->debug("$file has a different ID than the one in the filemap! ($filemap_id)");
             $logger->info("$file has been modified, updating its ID from $filemap_id to $id.");
 
+            # Note: The logic here is technically different than the one in Upload.pm.
+            # Upload.pm checks replace_duplicates and wipes the previous ID/metadata. 
+            # Shinobu just updates the ID in the database and leaves the old metadata in place.
+            # There's no way to assess user intent just from a filewatcher though, so we act non-destructively.
             change_archive_id( $filemap_id, $id );
 
             # Don't forget to update the filemap, later operations will behave incorrectly otherwise
