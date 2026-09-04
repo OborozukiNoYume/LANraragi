@@ -169,11 +169,12 @@ PSE (Page Streamed Extension) support lives in the same templates: entries embed
 through `Archive::serve_page()`. Catalog pagination slices `do_search` by the common `pagesize`
 setting and emits an unconditional `rel="next"` link (`start` advanced by the served entry
 count; there is no `rel="prev"`), threading `?key=` through every link; categories become OPDS
-facets with `thr:count`. The feed-level `<updated>` timestamp is hardcoded
+facets, with `thr:count` only for categories that have no saved search string. The feed-level
+`<updated>` timestamp is hardcoded
 (`2010-01-10T10:03:10Z` in `templates/opds.html.tt2`); entry timestamps derive from each
 archive's `date_added` tag. In `render_archive_page()` the PSE page number is 1-based and wraps
-to page 1 when out of range — but `0` or negative values index from the end of the file list (a
-quirk, not clamped).
+to page 1 when out of range — negative values index from the end of the file list (a quirk, not
+clamped), though the endpoint's `|| 1` default masks `page=0` before it reaches the model.
 
 ## Plugins & Registries: `Model/Plugins.pm`, `Model/Registry.pm`
 

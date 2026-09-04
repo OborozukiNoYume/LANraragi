@@ -125,7 +125,8 @@ Docker 构建路径使用 `tools/build/docker/install-perl-deps.sh`，它会引�
 最后运行，其后再安装 `before_dispatch` 钩子（基础 URL 前缀 + `lrr_baseurl` cookie，外加
 惰性安装的 SIGINT 处理器）与可选的指标钩子；`apply_routes()` 为启动收尾。关停处理仅针对
 SIGINT——处理器在首个请求到来时才安装，因此任何页面加载之前的信号不会被捕获——它会先经
-PID 文件杀死 Shinobu/Minion 子进程，再调用默认处理器。
+PID 文件杀死 Shinobu/Minion 子进程；先前安装的处理器只是被引用而从未被调用（代码中"调用旧
+处理器"的注释是陈旧的）。
 
 ## Docker
 

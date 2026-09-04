@@ -129,7 +129,8 @@ enqueues `build_stat_hashes`, and launches the Minion worker and Shinobu subproc
 `lrr_baseurl` cookie, plus a lazily-installed SIGINT handler) and the optional metrics hooks are
 installed; `apply_routes()` finishes startup. Shutdown handling is SIGINT-only — the handler is
 installed on the first request, so a signal before any page load is not trapped — and kills the
-Shinobu/Minion subprocesses via their PID files before invoking the default handler.
+Shinobu/Minion subprocesses via their PID files; the previously-installed handler is only
+referenced, never called (the code's own "calling the old handler" comment is stale).
 
 ## Docker
 

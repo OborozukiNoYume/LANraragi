@@ -167,11 +167,13 @@ LIMIT` 分页）；`update_archive_list()`/`add_to_tankoubon()`/`remove_from_tan
 `Opds::render_archive_page()`，后者根据档案的文件列表解析页码，并经由
 `Archive::serve_page()` 提供该页。目录分页按通用的 `pagesize` 设置对 `do_search` 切片，
 并输出一个无条件的 `rel="next"` 链接（`start` 前进已提供的条目数；没有 `rel="prev"`），
-同时在所有链接中携带 `?key=`；各分类成为带 `thr:count` 的 OPDS facet。源级别的
+同时在所有链接中携带 `?key=`；各分类成为 OPDS facet，`thr:count` 仅对没有保存搜索串的分类
+输出。源级别的
 `<updated>` 时间戳是硬编码的（`templates/opds.html.tt2` 中的
 `2010-01-10T10:03:10Z`）；条目时间戳派生自各档案的 `date_added` 标签。在
-`render_archive_page()` 中，PSE 页码从 1 开始，超出范围时回绕到第 1 页——但 `0` 或负数会
-从文件列表末尾开始索引（一个怪癖，未做钳制）。
+`render_archive_page()` 中，PSE 页码从 1 开始，超出范围时回绕到第 1 页——负数会
+从文件列表末尾开始索引（一个怪癖，未做钳制），不过端点的 `|| 1` 默认值会在到达模型前把
+`page=0` 掩盖为 1。
 
 ## 插件与注册表：`Model/Plugins.pm`、`Model/Registry.pm`
 

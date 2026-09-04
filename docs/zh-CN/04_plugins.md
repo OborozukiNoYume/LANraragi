@@ -140,7 +140,7 @@ cached. Run refresh first.`。`validate_registry_index()` 强制执行的索引 
 `version`（必须为 1）、`generated_at`（UTC RFC3339）与 `plugins`；每个插件以其小写的
 `[a-z0-9_-]` 命名空间为键，携带 `type`（四种托管类型之一）和一个 `versions` 映射——映射键
 是不带前导 `v` 的 SemVer 2.0.0 字符串，每个条目必须有 `name`、`author`、`description`、
-`artifact`（安全的相对路径）、64 位小写 `sha256` 和 `published_at`。产物 URL 按提供方解析
+`artifact`（安全的相对路径）、64 个字符的小写 `sha256` 和 `published_at`。产物 URL 按提供方解析
 （`resolve_git_raw_url()`/`resolve_cdn_artifact_url()`）：GitHub →
 `https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>`，Gitea →
 `https://<host>/api/v1/repos/<owner>/<repo>/raw/<path>?ref=<ref>`，CDN → 转义后的产物路径
