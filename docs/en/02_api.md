@@ -231,7 +231,7 @@ The `filter` string is parsed by `compute_search_filter()` in `lib/LANraragi/Mod
 (`serve_serverinfo()` in `lib/LANraragi/Controller/Api/Other.pm`) skips `openapi->valid_input`
 and renders plain JSON. It forwards server state in one shot — `name` and `motd` (the
 `htmltitle`/`motd` config fields, XML-escaped), `version`/`version_name`/`version_desc` (from
-`package.json` via the `LRR_VERSION` helpers), the booleans `has_password`, `debug_mode`,
+`package.json` via the `LRR_VERSION`/`LRR_VERNAME`/`LRR_DESC` helpers), the booleans `has_password`, `debug_mode`,
 `nofun_mode`, `server_resizes_images`, `authenticated_progress`, `server_tracks_progress` (the
 inverse of the `localprogress` setting) and `restart_required` (from `LRR_SERVER`), plus
 `archives_per_page` (`pagesize`), `total_pages_read` (`LRR_TOTALPAGESTAT`), `total_archives`

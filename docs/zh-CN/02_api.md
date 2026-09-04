@@ -230,7 +230,7 @@
 在 OpenAPI 操作中，`GET /api/info` 是个例外：它的处理器（`lib/LANraragi/Controller/Api/Other.pm`
 中的 `serve_serverinfo()`）跳过 `openapi->valid_input`，直接渲染普通 JSON。它一次性转发
 服务器状态——`name` 与 `motd`（`htmltitle`/`motd` 配置字段，经 XML 转义）、
-`version`/`version_name`/`version_desc`（经 `LRR_VERSION` 助手取自 `package.json`）、布尔值
+`version`/`version_name`/`version_desc`（分别经 `LRR_VERSION`/`LRR_VERNAME`/`LRR_DESC` 助手取自 `package.json`）、布尔值
 `has_password`、`debug_mode`、`nofun_mode`、`server_resizes_images`、`authenticated_progress`、
 `server_tracks_progress`（`localprogress` 设置的反值）与 `restart_required`（取自
 `LRR_SERVER`），外加 `archives_per_page`（`pagesize`）、`total_pages_read`

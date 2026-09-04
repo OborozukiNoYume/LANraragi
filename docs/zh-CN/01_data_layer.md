@@ -12,7 +12,7 @@ LANraragi 将其全部状态保存在单个 Redis 实例中，并划分到五个
 
 | DB | `lrr.conf` 键 | 句柄来源 | 内容 |
 |----|----------------|-------------|----------|
-| 0 | `redis_database` | `get_redis()` | 档案哈希（40 字符 ID）、分类哈希（`SET_*`）、戳记哈希（`STAMPS_*`）、合集 ZSET（`TANK_*`）——外加一个游离的 `LRR_CONFIG` 字段，见下文书签说明 |
+| 0 | `redis_database` | `get_redis()` | 档案哈希（40 字符 ID）、分类哈希（`SET_*`）、戳记哈希（`STAMPS_*`）、合集 ZSET（`TANK_*`）——外加一个游离的 `LRR_CONFIG` 哈希（存有书签分类链接——见下文说明） |
 | 1 | `redis_database_minion` | `get_minion()` | Minion 任务队列。其 schema 完全由 `Minion::Backend::Redis` 拥有；LANraragi 只负责将任务入队，从不手工写入键 |
 | 2 | `redis_database_config` | `get_redis_config()` | `LRR_CONFIG`、`LRR_FILEMAP`、`LRR_TAGRULES`、`LRR_TOTALPAGESTAT`、`LRR_DUPLICATE_GROUPS`、`LRR_PLUGIN_*` |
 | 3 | `redis_database_search` | `get_redis_search()` | 搜索索引集合与搜索缓存（见专门章节） |

@@ -72,9 +72,9 @@ Filtering (`search_uncached()`) starts from all 40-character archive IDs — or 
 Search syntax: `compute_search_filter()` does the tokenizing — comma-separated tokens; `"quoted"` or a trailing `$` forces exact
 matching; a leading `-` excludes; `?`/`_` match one character and `*`/`%` any number (rewritten to Redis glob
 metacharacters) — while the `namespace:value` restriction is applied by `search_uncached()`, anchoring the
-index scan on `INDEX_<ns>:tag*` rather than `INDEX_*tag*` keys. Sorting (`sort_results()`) is either by title via
-the natural sort of `LRR_TITLES`, or by any tag namespace (extracted with a regex, missing values sink to the
-back as `zzzz`), or by `lastreadtime` — the lastread and tag paths fetch values in bulk via Lua scripts
+index scan on `INDEX_<ns>:tag*` rather than `INDEX_*tag*` keys. Sorting: title order comes from the natural sort of `LRR_TITLES` inside `search_uncached()`;
+`sort_results()` handles the rest — any tag namespace (extracted with a regex, missing values
+sink to the back as `zzzz`) or `lastreadtime` — the lastread and tag paths fetch values in bulk via Lua scripts
 (`script_load` + `evalsha`) with pure-Perl fallbacks (`_fallback_lastread`, `_fallback_tags`), and
 `_impute_tank_date_tags()` infers `date_added`/`timestamp` sort keys for tanks from their member archives.
 

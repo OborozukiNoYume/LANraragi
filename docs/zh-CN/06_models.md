@@ -69,9 +69,9 @@ $hidecompleted)` 接收九个参数。在 `LAST_JOB_TIME` 键存在（即索引�
 搜索语法：令牌化由 `compute_search_filter()` 完成——逗号分隔的令牌；`"quoted"` 或末尾的 `$` 强制精确
 匹配；前导 `-` 表示排除；`?`/`_` 匹配单个字符，`*`/`%` 匹配任意数量字符（重写为 Redis glob
 元字符）——而 `namespace:value` 的限定由 `search_uncached()` 应用，它把索引扫描锚定到
-`INDEX_<ns>:tag*` 而非 `INDEX_*tag*` 键上。排序（`sort_results()`）要么按标题经由
-`LRR_TITLES` 的自然排序，要么按任意标签命名空间（用正则提取，缺失值作为 `zzzz` 沉到
-末尾），要么按 `lastreadtime`——lastread 与标签路径通过 Lua 脚本（`script_load` + `evalsha`）
+`INDEX_<ns>:tag*` 而非 `INDEX_*tag*` 键上。排序：标题顺序来自 `search_uncached()` 内对 `LRR_TITLES` 的自然排序；`sort_results()` 处理其余
+情况——按任意标签命名空间（用正则提取，缺失值作为 `zzzz` 沉到
+末尾）或按 `lastreadtime`——lastread 与标签路径通过 Lua 脚本（`script_load` + `evalsha`）
 批量取值，并带有纯 Perl 回退（`_fallback_lastread`、`_fallback_tags`），而
 `_impute_tank_date_tags()` 从成员档案为单行本推断 `date_added`/`timestamp` 排序键。
 

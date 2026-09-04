@@ -12,7 +12,7 @@ Database numbers below are the defaults from `lrr.conf`; each is overridable via
 
 | DB | `lrr.conf` key | Handle from | Contents |
 |----|----------------|-------------|----------|
-| 0 | `redis_database` | `get_redis()` | Archive hashes (40-char IDs), category hashes (`SET_*`), stamp hashes (`STAMPS_*`), tankoubon ZSETs (`TANK_*`) — plus one stray `LRR_CONFIG` field, see the bookmark note below |
+| 0 | `redis_database` | `get_redis()` | Archive hashes (40-char IDs), category hashes (`SET_*`), stamp hashes (`STAMPS_*`), tankoubon ZSETs (`TANK_*`) — plus one stray `LRR_CONFIG` hash (holding the bookmark category link — see the note below) |
 | 1 | `redis_database_minion` | `get_minion()` | Minion job queue. Schema owned entirely by `Minion::Backend::Redis`; LANraragi only enqueues jobs, never writes keys by hand |
 | 2 | `redis_database_config` | `get_redis_config()` | `LRR_CONFIG`, `LRR_FILEMAP`, `LRR_TAGRULES`, `LRR_TOTALPAGESTAT`, `LRR_DUPLICATE_GROUPS`, `LRR_PLUGIN_*` |
 | 3 | `redis_database_search` | `get_redis_search()` | Search index sets and the search cache (see dedicated section) |
