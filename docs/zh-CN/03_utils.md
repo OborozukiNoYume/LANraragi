@@ -18,7 +18,7 @@
 | `Login.pm` | `is_logged_in_api()` —— API key / 会话检查 |
 | `Metrics.pm` | Prometheus 文本暴露：路由规范化加 `/proc` 计数器 |
 | `Minion.pm` | 在 Minion 实例上注册所有后台任务 |
-| `OpenAPI.pm` | `apply_openapi_mojo_overrides()` 放宽 OpenAPI 请求校验 |
+| `OpenAPI.pm` | `apply_openapi_mojo_overrides()` —— `disable_openapi` 时绕过校验，否则照常校验并记录失败日志 |
 | `PageCache.pm` | 基于 CHI 的页面缓存（Unix 上用 FastMmap，Windows 上用 Memory） |
 | `Path.pm` | 文件系统辅助函数：路径创建/打开、档案路径查找、包<->路径转换 |
 | `Plugins.pm` | 插件注册表粘合：列出、加载、参数、在 Redis 中注册 |
@@ -43,20 +43,23 @@
   `Peek` 两种接口）。`get_filelist()` 遍历条目，跳过非图片文件和 AppleDouble/
   AppleSingle 垃圾文件（见内部函数 `is_apple_signature()`），做一次自然排序，然后把
   封面页移到最前、致谢页移到最后。
-- **PDF 由 VIPS 处理，而非 GhostScript**——整个代码库中没有任何 `gs` 调用。
+- **PDF 由 VIPS 处理，而非 GhostScript**——整个代码中没有任何 `gs` 调用（Ghostscript 仅作为
+  libvips 的打包依赖出现在 Homebrew formula 中）。
   `get_filelist()` 通过 `lib/LANraragi/Utils/Vips.pm` 的
   `vips_image_get_n_pages` 统计页数，`extract_single_file()` 则用
   `pdfload_page_dpi($archive, $page - 1, 200)` 渲染页面，再用 `write_to_buffer()` 将其
   重新编码为 JPEG。
 - **CBW（ComicBookWeb）**文件是指向远程页面图片的 XML。`parse_cbw_urls()`
   解析该 XML（变量替换加经内部函数 `expand_cbw_range()` 完成的 `[format:a-b]` 区间
-  展开），合成补零的页面名，`extract_single_file()` 通过
+  展开）；`get_filelist()` 经内部函数 `cbw_page_name()` 合成补零的页面名，
+  `extract_single_file()` 通过
   `fetch_cbw_image()` 代理远程字节。页面被提供后，`cbw_prefetch()` 会把接下来的几页
   预热进 `PageCache`。
 
-缩略图流水线：`extract_thumbnail()` 解压所请求的页面（对 CBW 封面会把页面字节存入
-PageCache），为封面图片在 Redis 中计算 SHA-1 `thumbhash`，然后调用
-`generate_thumbnail()`，后者生成一张 500px 高、JPEG 质量 50 的图片（启用 `use_hq` 时为
+缩略图流水线：`extract_thumbnail()` 解压所请求的页面（对 CBW 档案——无论是否封面——都会把
+页面字节存入 PageCache），为封面图片在 Redis 中计算 SHA-1 `thumbhash`，然后调用
+`generate_thumbnail()`，后者生成一张适配到 500x1000 以内（即至多 500px 宽）的图片，JPEG
+质量 50（启用 `use_hq` 时为
 80，启用 `get_jxlthumbpages` 时为 JPEG XL）。非封面缩略图落在按两个字符命名的子文件夹加
 档案 ID 之下。内部函数 `extract_single_file_to_file()`（未导出）支撑着
 `extract_file_from_archive()`，后者是面向插件的变体，解包到 `/temp/plugin`。
@@ -80,8 +83,10 @@ PageCache），为封面图片在 Redis 中计算 SHA-1 `thumbhash`，然后调�
 
 `ImageMagickResizer` 在 `try` 内部惰性地 `require` `Image::Magick`，设置
 `jpeg:size` 解码器提示以避免解码全分辨率帧，并为缩略图选择 `Sample`（快）或
-`Scale`（高质量）。若 PerlMagick 不可用，它就直接返回 undef，由调用方记录无法创建
-缩略图的日志。
+`Scale`（高质量）。若 PerlMagick 不可用，`require` 会 die，`catch` 块只在 debug 级别记一条
+日志，随后方法返回的是该日志调用的返回值而非 `undef`——因此 `generate_thumbnail()` 里基于
+definedness 的检查（本应记录 Couldn't create thumbnail! 日志）可能漏判这一失败。这是一个
+潜在的代码怪癖，此处仅作注记而不修改代码。
 
 ## Minion 任务
 
@@ -117,9 +122,11 @@ PageCache），为封面图片在 Redis 中计算 SHA-1 `thumbhash`，然后调�
   多锁获取失败时按相反顺序回滚。
 
 同一模块还负责进程生命周期：`start_minion()` 用 `MCE::Util::get_ncpu()` 确定 worker
-的并行任务数，并在一个 `Proc::Simple` 子进程中启动它（PID 记录在 `minion.pid`），
+的并行任务数，并在一个 `Proc::Simple` 子进程中启动它（`minion.pid` 中存的是冻结的
+`Proc::Simple` 对象，原始 PID 在 `minion.pid-s6`），
 `start_shinobu()` 对文件监视器做同样的事。`split_workload_by_cpu()`
-为上述 Minion 任务使用的 MCE 循环切分工作。
+会把数组切成每 CPU 一份，但上述 Minion 任务是把完整 key 列表交给 `mce_loop`、由 MCE
+内部切块——目前没有任何调用方使用它。
 
 ## 标签规则
 
@@ -150,12 +157,15 @@ PageCache），为封面图片在 Redis 中计算 SHA-1 `thumbhash`，然后调�
 `lib/LANraragi/Utils/Login.pm` 的 `is_logged_in_api()` 接受以下任意一种：`Bearer` 加
 base64 API key 的 `Authorization` 头、`key` 请求参数（OPDS 使用）、已认证的会话，或者
 干脆已禁用密码强制。`lib/LANraragi/Utils/OpenAPI.pm` 的
-`apply_openapi_mojo_overrides()` 在原生行为过于严格之处放宽 OpenAPI 校验。
+`apply_openapi_mojo_overrides()` 重新接管 `openapi.valid_input`：设置 `disableopenapi` 时
+完全绕过请求*与*响应校验；否则请求照常校验，但失败会在服务端记录日志并渲染为 400 响应体。
 
 本地化位于 `I18N.pm`/`I18NInitializer.pm`：基于 gettext 词表的 `Locale::Maketext`，
 以 `lh` helper 暴露给模板，优先遵循强制语言设置，再回退到 `Accept-Language` 协商。
-可观测性一分为二：`Logging.pm`/`RotatingLog.pm`（日志器、插件日志器、带 `flock` 的
-轮转）与 `Metrics.pm`（Prometheus 计数器：`extract_endpoint()` 把请求路径规范化为
+可观测性一分为二：`Logging.pm`/`RotatingLog.pm`（日志器、插件日志器，以及基于大小的
+轮转——默认 1 MiB 经 `LRR_LOGROTATE_SIZE`，每追加 1000 行检查一次，旧文件 gzip 为
+`<log>.N.gz` 并保留 `LRR_LOGROTATE_FILES`（默认 7）份——配合 `flock` 加锁）与
+`Metrics.pm`（Prometheus 计数器：`extract_endpoint()` 把请求路径规范化为
 路由模板以限制标签基数，`read_proc_stat`/`read_proc_statm`/`read_proc_io_bytes` 等
 为进程指标供数）。
 
@@ -163,9 +173,10 @@ base64 API key 的 `Authorization` 头、`key` 请求参数（OPDS 使用）、�
 
 - **数据层。** `Database.pm` 覆盖档案 CRUD（`add_archive_to_redis`、`set_tags`、
   `set_title`、`set_summary`、`get_archive_json_multi`、`compute_id`、`invalidate_cache`、
-  `get_computed_tagrules`、`update_indexes`、`clean_database`）。`Redis.pm` 只是带
-  Unicode NFC 规范化的编码/解码函数对。`PageCache.pm` 封装 CHI——Unix 上用
-  FastMmap 驱动，Windows 上用 Memory——容量上限为 `min(tempmaxsize, 4096)` MB。
+  `get_computed_tagrules`、`update_indexes`、`clean_database`）。`Redis.pm` 只是编码/解码
+  函数对：`redis_encode()` 在 UTF-8 编码前先做 NFC 规范化，`redis_decode()` 则以
+  `FB_CROAK` 做双重解码。`PageCache.pm` 封装 CHI——Unix 上用
+  FastMmap 驱动，Windows 上用 Memory——容量上限为 `max(0, min(tempmaxsize, 4096))` MB。
 - **文件系统。** `Path.pm`（`create_path`、`open_path_or_die`、`get_archive_path`、
   `package_to_path`/`path_to_package`、`compat_path`）与 `TempFolder.pm`（`get_temp`）。
   `String.pm` 持有 `clean_title`、`trim`、`trim_url` 和 `most_similar`（由

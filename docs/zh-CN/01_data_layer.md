@@ -22,7 +22,7 @@ LANraragi 将其全部状态保存在单个 Redis 实例中，并划分到五个
 
 ### 档案（DB0，Hash）
 
-键是由 `lib/LANraragi/Utils/Database.pm` 中的 `compute_id()` 计算的 40 字符 SHA-1 十六进制 ID：它读取文件的前 512000 字节并对其求哈希（全零摘要——即空文件——会被拒绝）。需要“全部档案”的代码用 `keys('????????????????????????????????????????')` 枚举 40 字符键（例如 `lib/LANraragi/Model/Search.pm` 中的 `search_uncached()`、`lib/LANraragi/Model/Stats.pm` 中的 `build_stat_hashes()`）。
+键是由 `lib/LANraragi/Utils/Database.pm` 中的 `compute_id()` 计算的 40 字符 SHA-1 十六进制 ID：它读取文件的前 512000 字节并对其求哈希（空输入的摘要 `da39a3ee…`——即空文件——会被拒绝）。需要“全部档案”的代码用 `keys('????????????????????????????????????????')` 枚举 40 字符键（例如 `lib/LANraragi/Model/Search.pm` 中的 `search_uncached()`、`lib/LANraragi/Model/Stats.pm` 中的 `build_stat_hashes()`）。
 
 | 字段 | 含义 | 写入方 |
 |-------|---------|-----------|
@@ -90,7 +90,7 @@ LANraragi 将其全部状态保存在单个 Redis 实例中，并划分到五个
 3. 播下候选列表：启用合集分组时取 `LRR_TANKGROUPED` 的成员，否则取 DB0 中全部 40 字符键。
 4. 应用分类：动态分类的 `search` 字符串被解析为额外的过滤词元；静态分类的 `archives` JSON 列表与候选取交集。
 5. 应用开关：仅看无标签与 `LRR_UNTAGGED` 取交集；仅看新档与 `LRR_NEW` 取交集（任一成员档案为新则合集匹配）；隐藏已读完会丢弃 `progress`/`pagecount` 超过 85% 的档案——先用 Lua 脚本对 DB0 哈希批量检查，并回退到逐 ID 的 `HGET`。
-6. 应用过滤词元：精确标签直接读取 `INDEX_<tag>`，非精确标签对 `INDEX_*` 键做通配，每个词元还通过在 `LRR_TITLES` 上的 `ZSCAN` 模糊匹配标题。特殊的 `read:`/`pages:` 词元按数值比较 DB0 的 `progress`/`pagecount` 字段（支持 `>`、`<`、`>=`、`<=`）。
+6. 应用过滤词元：精确标签直接读取 `INDEX_<tag>`，非精确标签对 `INDEX_*` 键做通配，每个词元还通过在 `LRR_TITLES` 上的 `ZSCAN` 模糊匹配标题。特殊的 `read:`/`pages:` 词元按数值比较 DB0 的 `progress`/`pagecount` 字段（支持 `>`、`<`、`>=`、`<=`，裸数字表示精确匹配）。
 7. 排序：按标题排序通过在 `ZRANGEBYLEX LRR_TITLES` 上的 `nsort`；按 `lastread` 排序通过 `lastreadtime`（合集取成员档案中的最大值）；按其他任意键排序通过该命名空间中的第一个标签值，缺失该命名空间的 ID 被排到末尾。
 8. 最终的 ID 列表（以带键计数为前缀）按缓存键固化进 `LRR_SEARCHCACHE`。
 
@@ -102,7 +102,7 @@ LANraragi 将其全部状态保存在单个 Redis 实例中，并划分到五个
 | `LRR_FILEMAP` | 哈希 | 绝对文件路径到档案 ID 的映射；由 Shinobu 监视器（`lib/Shinobu.pm`）写入，由 `lib/LANraragi/Utils/Database.pm` 中的 `clean_database()` 和 `lib/LANraragi/Model/Upload.pm` 读取 |
 | `LRR_TAGRULES` | 列表 | 扁平化的标签规则（`lib/LANraragi/Utils/Database.pm` 中的 `save_computed_tagrules()` / `get_computed_tagrules()`） |
 | `LRR_TOTALPAGESTAT` | 字符串 | 总阅读页数计数器，每次进度更新时 INCR（`lib/LANraragi/Controller/Api/Archive.pm` 中的 `update_progress`），由 `lib/LANraragi/Model/Stats.pm` 中的 `get_page_stat()` 读取 |
-| `LRR_DUPLICATE_GROUPS` | 哈希 | `dupgp_<key>` 到档案 ID 的 JSON 数组的映射；由重复检测 Minion 任务生成（`lib/LANraragi/Utils/Minion.pm`），由 `lib/LANraragi/Controller/Duplicates.pm` 呈现 |
+| `LRR_DUPLICATE_GROUPS` | 哈希 | `dupgp_<key>` 到档案 ID 的 JSON 数组的映射；由重复检测 Minion 任务生成（`lib/LANraragi/Utils/Minion.pm`）；由 `lib/LANraragi/Controller/Duplicates.pm` 读取、修剪并重写（成员已消失的分组会被删除或重写，`delete` 请求会清空整个哈希） |
 | `LRR_PLUGIN_<NAMESPACE>` | 哈希 | 各插件的状态，插件命名空间转为大写：`enabled`、`customargs`（JSON 数组）、`installed_path`、`installed_version`、`installed_registry`、`installed_sha256`、`type`（`lib/LANraragi/Utils/Plugins.pm`、`lib/LANraragi/Model/Plugins.pm`） |
 
 `LRR_CONFIG` 中代码会读取的字段（非穷举——配置页面还可以写入其他字段；默认值以 `lib/LANraragi/Model/Config.pm` 读取到的为准）：
@@ -134,7 +134,7 @@ LANraragi 将其全部状态保存在单个 Redis 实例中，并划分到五个
 
 `lib/LANraragi/Model/Search.pm` 中的 `do_search()` 将结果缓存到 `LRR_SEARCHCACHE` 哈希中：
 
-- 字段名：八个搜索参数以连字符连接——
+- 字段名：八个搜索参数以连字符连接后再经 `redis_encode()` 处理——
   `"$category_id-$filter-$sortkey-$sortorder-$newonly-$untaggedonly-$grouptanks-$hidecompleted"`。
 - 值：`[ $keyed_count, @ids ]` 的 Storable `nfreeze` 结果，其中开头的计数表示有多少 ID 带有排序命名空间。
 - 未命中时会尝试排序顺序*相反*的键；`check_cache()` 随后只反转带键前缀，使缺失排序键的 ID 仍留在末尾。

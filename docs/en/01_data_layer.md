@@ -22,7 +22,7 @@ Database numbers below are the defaults from `lrr.conf`; each is overridable via
 
 ### Archive (DB0, Hash)
 
-The key is a 40-character SHA-1 hex ID computed by `compute_id()` in `lib/LANraragi/Utils/Database.pm`: it reads the first 512000 bytes of the file and hashes them (an all-zero digest — an empty file — is rejected). Code that needs "every archive" enumerates 40-character keys with `keys('????????????????????????????????????????')` (e.g. `search_uncached()` in `lib/LANraragi/Model/Search.pm`, `build_stat_hashes()` in `lib/LANraragi/Model/Stats.pm`).
+The key is a 40-character SHA-1 hex ID computed by `compute_id()` in `lib/LANraragi/Utils/Database.pm`: it reads the first 512000 bytes of the file and hashes them (the empty-input digest `da39a3ee…` — i.e. an empty file — is rejected). Code that needs "every archive" enumerates 40-character keys with `keys('????????????????????????????????????????')` (e.g. `search_uncached()` in `lib/LANraragi/Model/Search.pm`, `build_stat_hashes()` in `lib/LANraragi/Model/Stats.pm`).
 
 | Field | Meaning | Written by |
 |-------|---------|-----------|
@@ -90,7 +90,7 @@ Step-by-step through `do_search()` / `search_uncached()` in `lib/LANraragi/Model
 3. Seed the candidate list: members of `LRR_TANKGROUPED` when tank grouping is on, otherwise all 40-character keys in DB0.
 4. Apply the category: a dynamic category's `search` string is parsed into extra filter tokens; a static category's `archives` JSON list is intersected with the candidates.
 5. Apply toggles: untagged-only intersects `LRR_UNTAGGED`; new-only intersects `LRR_NEW` (a tank matches if any member archive is new); hide-completed drops archives whose `progress`/`pagecount` exceeds 85% — checked in bulk against the DB0 hashes with a Lua script, falling back to per-ID `HGET`s.
-6. Apply filter tokens: exact tags read `INDEX_<tag>` directly, inexact tags glob `INDEX_*` keys, and every token also fuzzy-matches titles via `ZSCAN` over `LRR_TITLES`. The special `read:`/`pages:` tokens compare the DB0 `progress`/`pagecount` fields numerically (supports `>`, `<`, `>=`, `<=`).
+6. Apply filter tokens: exact tags read `INDEX_<tag>` directly, inexact tags glob `INDEX_*` keys, and every token also fuzzy-matches titles via `ZSCAN` over `LRR_TITLES`. The special `read:`/`pages:` tokens compare the DB0 `progress`/`pagecount` fields numerically (supports `>`, `<`, `>=`, `<=`, and a bare number for exact match).
 7. Sort: by title via `nsort` over `ZRANGEBYLEX LRR_TITLES`; by `lastread` via `lastreadtime` (tanks use the maximum across member archives); by any other key via the first tag value in that namespace, with IDs missing the namespace pushed to the back.
 8. The final ID list (prefixed with the keyed count) is frozen into `LRR_SEARCHCACHE` under the cache key.
 
@@ -102,7 +102,7 @@ Step-by-step through `do_search()` / `search_uncached()` in `lib/LANraragi/Model
 | `LRR_FILEMAP` | Hash | Absolute file path to archive ID; written by the Shinobu watcher (`lib/Shinobu.pm`), read by `clean_database()` in `lib/LANraragi/Utils/Database.pm` and `lib/LANraragi/Model/Upload.pm` |
 | `LRR_TAGRULES` | List | Flattened tag rules (`save_computed_tagrules()` / `get_computed_tagrules()` in `lib/LANraragi/Utils/Database.pm`) |
 | `LRR_TOTALPAGESTAT` | String | Counter of total pages read, INCR'd on every progress update (`update_progress` in `lib/LANraragi/Controller/Api/Archive.pm`), read by `get_page_stat()` in `lib/LANraragi/Model/Stats.pm` |
-| `LRR_DUPLICATE_GROUPS` | Hash | `dupgp_<key>` to JSON array of archive IDs; produced by the duplicate-detection Minion task (`lib/LANraragi/Utils/Minion.pm`), surfaced by `lib/LANraragi/Controller/Duplicates.pm` |
+| `LRR_DUPLICATE_GROUPS` | Hash | `dupgp_<key>` to JSON array of archive IDs; produced by the duplicate-detection Minion task (`lib/LANraragi/Utils/Minion.pm`); read, pruned and rewritten by `lib/LANraragi/Controller/Duplicates.pm` (groups whose members vanished are dropped or rewritten, and a `delete` request clears the whole hash) |
 | `LRR_PLUGIN_<NAMESPACE>` | Hash | Per-plugin state, namespace uppercased: `enabled`, `customargs` (JSON array), `installed_path`, `installed_version`, `installed_registry`, `installed_sha256`, `type` (`lib/LANraragi/Utils/Plugins.pm`, `lib/LANraragi/Model/Plugins.pm`) |
 
 `LRR_CONFIG` fields the code reads (non-exhaustive — the configuration page can write others; defaults shown as read by `lib/LANraragi/Model/Config.pm`):
@@ -134,7 +134,7 @@ Step-by-step through `do_search()` / `search_uncached()` in `lib/LANraragi/Model
 
 `do_search()` in `lib/LANraragi/Model/Search.pm` caches results in the `LRR_SEARCHCACHE` hash:
 
-- Field name: the eight search parameters joined by dashes —
+- Field name: the eight search parameters joined by dashes and passed through `redis_encode()` —
   `"$category_id-$filter-$sortkey-$sortorder-$newonly-$untaggedonly-$grouptanks-$hidecompleted"`.
 - Value: a Storable `nfreeze` of `[ $keyed_count, @ids ]`, where the leading count says how many IDs carry the sort namespace.
 - On a miss, the key with the *inverted* sort order is tried; `check_cache()` then reverses only the keyed prefix so IDs missing the sort key stay at the back.

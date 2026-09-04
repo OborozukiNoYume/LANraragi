@@ -39,7 +39,8 @@ the defaults in `lrr.conf`. Five connection factories hand out fresh connections
 Callers are responsible for `quit()`ing what they take.
 
 Runtime settings live in the `LRR_CONFIG` hash of the config DB; `get_redis_conf($param, $default)` returns the
-stored value or the built-in default, and a long tail of typed accessors wraps it (`get_pagesize`,
+stored value or the built-in default, and a long tail of accessor wrappers (returning raw Redis strings)
+wraps it (`get_pagesize`,
 `get_thumbdir`, `get_userdir`, `enable_resize`, `get_threshold`, `get_readquality`, `enable_pass`,
 `enable_nofun`, `enable_cors`, `enable_metrics`, `enable_localprogress`, `enable_authprogress`,
 `get_replacedupe`, `get_hqthumbpages`, `get_jxlthumbpages`, `get_style`, `get_language`, ...). `get_baseurl()`
@@ -68,9 +69,10 @@ Filtering (`search_uncached()`) starts from all 40-character archive IDs — or 
 - `$hidecompleted`: a Lua script bulk-checks `progress/pagecount > 0.85` per ID (with a per-ID HGET fallback),
 - `pages:`/`read:` tokens comparing against the `pagecount`/`progress` hash fields with `=`, `>`, `>=`, `<`, `<=`.
 
-Search syntax, from `compute_search_filter()`: comma-separated tokens; `"quoted"` or a trailing `$` forces exact
+Search syntax: `compute_search_filter()` does the tokenizing — comma-separated tokens; `"quoted"` or a trailing `$` forces exact
 matching; a leading `-` excludes; `?`/`_` match one character and `*`/`%` any number (rewritten to Redis glob
-metacharacters); `namespace:value` restricts to a namespace. Sorting (`sort_results()`) is either by title via
+metacharacters) — while the `namespace:value` restriction is applied by `search_uncached()`, anchoring the
+index scan on `INDEX_<ns>:tag*` rather than `INDEX_*tag*` keys. Sorting (`sort_results()`) is either by title via
 the natural sort of `LRR_TITLES`, or by any tag namespace (extracted with a regex, missing values sink to the
 back as `zzzz`), or by `lastreadtime` — the lastread and tag paths fetch values in bulk via Lua scripts
 (`script_load` + `evalsha`) with pure-Perl fallbacks (`_fallback_lastread`, `_fallback_tags`), and
@@ -87,7 +89,7 @@ back as `zzzz`), or by `lastreadtime` — the lastread and tag paths fetch value
   thumbnail either returns `public/img/noThumb.png` or — when the client passes `no_fallback=true` — queues the
   `thumbnail_task` Minion job and returns `202` with the job ID.
 - `generate_page_thumbnails($id)`: scans for missing per-page thumbnails and queues the `page_thumbnails` Minion
-  job (deduplicated by the `thumbjob` hash field; `202` while active).
+  job (deduplicated by the `thumbjob` hash field; `202` while the queued job is pending or running).
 - `update_metadata($id, $title, $tags, $summary)`: trims inputs, writes via the Database utils, invalidates cache.
 - ToC management: `add_toc_entry($id, $page, $title)` / `remove_toc_entry($id, $page)` maintain the archive's
   `toc` JSON hash ({ page → title }), which the reader overlay turns into chapters.
@@ -151,8 +153,9 @@ LIMIT`); `update_archive_list()`/`add_to_tankoubon()`/`remove_from_tankoubon()` 
 `Reader.pm` is deliberately small: `build_reader_JSON()` opens the archive, returns the browser-facing page
 paths (URL-escaped, each pointing at `/api/archives/{id}/page?path=...`) and refreshes the stored `pagecount`;
 `resize_image($content, $quality, $threshold)` is the Model-level resize entry that internally calls
-`resize_page()` on the resampler built by `LANraragi::Utils::Resizer`'s `get_resizer()` (a no-op returning the
-original bytes when no resizer is available or the image is under the size threshold).
+`resize_page()` on the resampler built by `LANraragi::Utils::Resizer`'s `get_resizer()` (returning the
+original bytes unchanged when the image is under the size threshold or the resizer call comes back
+undefined).
 
 `Opds.pm` renders the OPDS 1.2 feed: `generate_opds_catalog()` lists archives per page/category through
 `Search::do_search`, `generate_opds_item()` renders one entry, both via the `opds`/`opds_entry` templates.
@@ -190,12 +193,14 @@ and the default-registry accessors. `lib/LANraragi.pm` refreshes every registry 
 - **`Stamp.pm`** — page stamps ("bookmark a note to page N"). `add_stamp()` creates `STAMPS_<page>_<millis>`
   hashes (content/position/archive_id) and appends the ID to the archive's `stamps` JSON array;
   `get_stamps_by_page()`, `get_stamped_pages()`, `update_stamp()`, `remove_stamp()` round out the CRUD.
-- **`Stats.pm`** — `build_stat_hashes()` (run as the `build_stat_hashes` Minion job at startup and on cache
-  invalidation) rebuilds the entire search DB in one WATCH/MULTI transaction: `flushdb()`, then per
+- **`Stats.pm`** — `build_stat_hashes()` (run as the `build_stat_hashes` Minion job at startup and on
+  database-level rebuilds — only `invalidate_cache(1)`, used by the drop/clean database endpoints, enqueues it)
+  rebuilds the entire search DB in one WATCH/MULTI transaction: `flushdb()`, then per
   archive/tank the `INDEX_<tag>` sets, `LRR_TITLES`, `LRR_STATS` (tag counters), `LRR_UNTAGGED`, `LRR_NEW`,
   `LRR_TANKGROUPED`, ending by stamping `LAST_JOB_TIME`. Also exposes `is_url_recorded()` against `LRR_URLMAP`.
 - **`Metrics.pm`** — Prometheus support, gated by the `enablemetrics` setting: `collect_request_metrics()` (via
-  the `before/after_dispatch` hooks installed in `lib/LANraragi.pm`), `collect_process_metrics()` and
+  the `after_dispatch` hook installed in `lib/LANraragi.pm`, whose `before_dispatch` counterpart only stashes
+  the request start time), `collect_process_metrics()` and
   `flush_request_metrics_to_redis()` on a 30 s recurring timer, worker tracking
   (`register_worker`/`unregister_worker`), and the `get_prometheus_*` renderers.
 - **`Setup.pm`** — `first_install_actions()` detects a fresh install by the absence of `LRR_CONFIG → htmltitle`,

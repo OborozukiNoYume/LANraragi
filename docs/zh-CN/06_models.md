@@ -39,7 +39,7 @@ Redis 数据库：档案（`redis_database` 0）、Minion（`redis_database_mini
 `Minion` 客户端。调用方有责任对自己取得的连接调用 `quit()`。
 
 运行时设置位于配置数据库的 `LRR_CONFIG` 哈希中；`get_redis_conf($param, $default)` 返回
-存储值或内置默认值，一长串带类型的访问器封装了它（`get_pagesize`、
+存储值或内置默认值，一长串访问器包装函数（返回原始 Redis 字符串）封装了它（`get_pagesize`、
 `get_thumbdir`、`get_userdir`、`enable_resize`、`get_threshold`、`get_readquality`、`enable_pass`、
 `enable_nofun`、`enable_cors`、`enable_metrics`、`enable_localprogress`、`enable_authprogress`、
 `get_replacedupe`、`get_hqthumbpages`、`get_jxlthumbpages`、`get_style`、`get_language`、……）。
@@ -66,9 +66,10 @@ $hidecompleted)` 接收九个参数。在 `LAST_JOB_TIME` 键存在（即索引�
 - `$hidecompleted`：一个 Lua 脚本按 ID 批量检查 `progress/pagecount > 0.85`（带逐 ID 的 HGET 回退），
 - `pages:`/`read:` 令牌以 `=`、`>`、`>=`、`<`、`<=` 与 `pagecount`/`progress` 哈希字段比较。
 
-搜索语法，来自 `compute_search_filter()`：逗号分隔的令牌；`"quoted"` 或末尾的 `$` 强制精确
+搜索语法：令牌化由 `compute_search_filter()` 完成——逗号分隔的令牌；`"quoted"` 或末尾的 `$` 强制精确
 匹配；前导 `-` 表示排除；`?`/`_` 匹配单个字符，`*`/`%` 匹配任意数量字符（重写为 Redis glob
-元字符）；`namespace:value` 限定到某个命名空间。排序（`sort_results()`）要么按标题经由
+元字符）——而 `namespace:value` 的限定由 `search_uncached()` 应用，它把索引扫描锚定到
+`INDEX_<ns>:tag*` 而非 `INDEX_*tag*` 键上。排序（`sort_results()`）要么按标题经由
 `LRR_TITLES` 的自然排序，要么按任意标签命名空间（用正则提取，缺失值作为 `zzzz` 沉到
 末尾），要么按 `lastreadtime`——lastread 与标签路径通过 Lua 脚本（`script_load` + `evalsha`）
 批量取值，并带有纯 Perl 回退（`_fallback_lastread`、`_fallback_tags`），而
@@ -85,7 +86,7 @@ $hidecompleted)` 接收九个参数。在 `LAST_JOB_TIME` 键存在（即索引�
   缩略图要么返回 `public/img/noThumb.png`，要么——当客户端传入 `no_fallback=true` 时——将
   `thumbnail_task` Minion 任务入队并返回 `202` 与任务 ID。
 - `generate_page_thumbnails($id)`：扫描缺失的逐页缩略图并将 `page_thumbnails` Minion
-  任务入队（以 `thumbjob` 哈希字段去重；进行中返回 `202`）。
+  任务入队（以 `thumbjob` 哈希字段去重；已入队任务处于 pending 或 running 时返回 `202`）。
 - `update_metadata($id, $title, $tags, $summary)`：修剪输入，经由数据库工具写入，并使缓存失效。
 - ToC 管理：`add_toc_entry($id, $page, $title)` / `remove_toc_entry($id, $page)` 维护档案的
   `toc` JSON 哈希（{ page → title }），阅读器覆盖层将其转换为章节。
@@ -151,7 +152,7 @@ LIMIT` 分页）；`update_archive_list()`/`add_to_tankoubon()`/`remove_from_tan
 路径（URL 转义，每个指向 `/api/archives/{id}/page?path=...`）并刷新存储的 `pagecount`；
 `resize_image($content, $quality, $threshold)` 是模型级的尺寸调整入口，内部对由
 `LANraragi::Utils::Resizer` 的 `get_resizer()` 构建的重采样器调用
-`resize_page()`（当没有可用的重采样器或图片小于尺寸阈值时，该调用是无操作，直接返回
+`resize_page()`（当图片小于尺寸阈值或重采样调用返回 undef 时，原样返回
 原始字节）。
 
 `Opds.pm` 渲染 OPDS 1.2 源：`generate_opds_catalog()` 通过
@@ -192,14 +193,15 @@ LIMIT` 分页）；`update_archive_list()`/`add_to_tankoubon()`/`remove_from_tan
   `STAMPS_<page>_<millis>` 哈希（content/position/archive_id）并把 ID 追加到档案的 `stamps`
   JSON 数组；`get_stamps_by_page()`、`get_stamped_pages()`、`update_stamp()`、`remove_stamp()`
   补全 CRUD。
-- **`Stats.pm`** —— `build_stat_hashes()`（作为 `build_stat_hashes` Minion 任务在启动时和缓存
-  失效时运行）在一个 WATCH/MULTI 事务中重建整个搜索数据库：`flushdb()`，然后逐
+- **`Stats.pm`** —— `build_stat_hashes()`（作为 `build_stat_hashes` Minion 任务在启动时和数据库级
+  重建时运行——只有 `invalidate_cache(1)`，即清空/清理数据库端点，会将其入队）
+  在一个 WATCH/MULTI 事务中重建整个搜索数据库：`flushdb()`，然后逐
   档案/单行本构建 `INDEX_<tag>` 集合、`LRR_TITLES`、`LRR_STATS`（标签计数器）、`LRR_UNTAGGED`、
   `LRR_NEW`、`LRR_TANKGROUPED`，最后写入 `LAST_JOB_TIME` 时间戳。还暴露针对 `LRR_URLMAP` 的
   `is_url_recorded()`。
 - **`Metrics.pm`** —— Prometheus 支持，由 `enablemetrics` 设置门控：
-  `collect_request_metrics()`（经由安装在 `lib/LANraragi.pm` 中的 `before/after_dispatch`
-  钩子）、按 30 秒循环定时器运行的 `collect_process_metrics()` 和
+  `collect_request_metrics()`（经由安装在 `lib/LANraragi.pm` 中的 `after_dispatch`
+  钩子，其 `before_dispatch` 对应钩子只暂存请求起始时间）、按 30 秒循环定时器运行的 `collect_process_metrics()` 和
   `flush_request_metrics_to_redis()`、worker 跟踪（`register_worker`/`unregister_worker`），
   以及 `get_prometheus_*` 渲染器。
 - **`Setup.pm`** —— `first_install_actions()` 通过 `LRR_CONFIG → htmltitle` 的缺失检测全新

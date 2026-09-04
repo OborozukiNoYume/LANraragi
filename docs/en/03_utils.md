@@ -19,7 +19,7 @@ modules, one line each:
 | `Login.pm` | `is_logged_in_api()` — API key / session checks |
 | `Metrics.pm` | Prometheus text exposition: route normalization plus `/proc` counters |
 | `Minion.pm` | Registers all background job tasks on the Minion instance |
-| `OpenAPI.pm` | `apply_openapi_mojo_overrides()` to relax OpenAPI request validation |
+| `OpenAPI.pm` | `apply_openapi_mojo_overrides()` — bypasses validation under `disable_openapi`, otherwise validates and logs failures |
 | `PageCache.pm` | CHI-based page cache (FastMmap on Unix, Memory on Windows) |
 | `Path.pm` | Filesystem helpers: path creation/opening, archive path lookup, package<->path conversion |
 | `Plugins.pm` | Plugin registry glue: listing, loading, parameters, registration in Redis |
@@ -45,19 +45,21 @@ modules, one line each:
   AppleSingle junk (see the internal `is_apple_signature()`), applies a natural sort, then moves
   cover pages to the front and credit pages to the back.
 - **PDFs are handled by VIPS, not GhostScript** — there is no `gs` invocation anywhere in the
-  codebase. `get_filelist()` counts pages via `lib/LANraragi/Utils/Vips.pm`'s
+  code (Ghostscript appears only as a libvips packaging dependency in the Homebrew formula). `get_filelist()` counts pages via `lib/LANraragi/Utils/Vips.pm`'s
   `vips_image_get_n_pages`, and `extract_single_file()` renders a page
   with `pdfload_page_dpi($archive, $page - 1, 200)` before re-encoding it as JPEG with
   `write_to_buffer()`.
 - **CBW (ComicBookWeb)** files are XML pointing at remote page images. `parse_cbw_urls()`
   parses the XML (variable substitution plus `[format:a-b]` range expansion via internal
-  `expand_cbw_range()`), synthesizes zero-padded page names, and `extract_single_file()` proxies
+  `expand_cbw_range()`); `get_filelist()` synthesizes the zero-padded page names through the
+  internal `cbw_page_name()`, and `extract_single_file()` proxies
   the remote bytes through `fetch_cbw_image()`. `cbw_prefetch()` warms the next few pages into
   `PageCache` after a page is served.
 
 The thumbnail pipeline: `extract_thumbnail()` extracts the requested page (storing the page
-bytes in PageCache for CBW covers), computes a SHA-1 `thumbhash` in Redis for cover images, and
-calls `generate_thumbnail()`, which produces a 500px-tall image at JPEG quality 50 (80 with
+bytes in PageCache for CBW archives, cover or not), computes a SHA-1 `thumbhash` in Redis for cover images, and
+calls `generate_thumbnail()`, which produces an image fit within 500x1000 (so at most 500px
+wide) at JPEG quality 50 (80 with
 `use_hq`, JPEG XL when `get_jxlthumbpages` is enabled). Non-cover thumbnails land under a
 two-character subfolder plus archive ID. The internal `extract_single_file_to_file()` (not
 exported) backs `extract_file_from_archive()`, the plugin-facing variant that unpacks into
@@ -84,8 +86,10 @@ VipsImage handles).
 
 `ImageMagickResizer` lazily `require`s `Image::Magick` inside a `try`, sets the
 `jpeg:size` decoder hint to avoid decoding full-resolution frames, and picks `Sample` (fast) or
-`Scale` (HQ) for thumbnails. If PerlMagick is unavailable it simply returns undef and the caller
-logs that no thumbnail could be created.
+`Scale` (HQ) for thumbnails. If PerlMagick is unavailable the `require` dies, the `catch` block
+merely logs at debug level, and the method returns the value of that logging call rather than
+`undef` — so the definedness check in `generate_thumbnail()` (which logs "Couldn't create
+thumbnail!") can miss the failure. That is a latent code quirk, documented here rather than fixed.
 
 ## Minion Tasks
 
@@ -123,9 +127,10 @@ thumbnail and duplicate jobs fall back to sequential execution there.
   acquisitions roll back in reverse order.
 
 The same module also owns process lifecycle: `start_minion()` sizes the worker's parallel job
-count with `MCE::Util::get_ncpu()` and launches it in a `Proc::Simple` subprocess (PID recorded
-in `minion.pid`), while `start_shinobu()` does the same for the file watcher. `split_workload_by_cpu()`
-chunks work for the MCE loops used by the Minion tasks above.
+count with `MCE::Util::get_ncpu()` and launches it in a `Proc::Simple` subprocess (a frozen
+`Proc::Simple` object stored in `minion.pid`, the raw PID in `minion.pid-s6`), while `start_shinobu()` does the same for the file watcher. `split_workload_by_cpu()`
+splits an array into per-CPU chunks, but the Minion tasks above hand their full key list to
+`mce_loop` and let MCE chunk internally — nothing currently calls it.
 
 ## Tag Rules
 
@@ -157,23 +162,28 @@ public/login/ logged-in route hierarchies.
 `lib/LANraragi/Utils/Login.pm`'s `is_logged_in_api()` accepts any of: a `Bearer` + base64 API
 key `Authorization` header, a `key` request parameter (used by OPDS), an authenticated session,
 or simply having password enforcement disabled. `lib/LANraragi/Utils/OpenAPI.pm`'s
-`apply_openapi_mojo_overrides()` loosens OpenAPI validation where the stock behavior is too
-strict.
+`apply_openapi_mojo_overrides()` re-wires `openapi.valid_input`: with `disableopenapi` set it
+bypasses request *and* response validation entirely; otherwise requests are still validated, but
+failures are logged server-side and rendered as a 400 body.
 
 Localization lives in `I18N.pm`/`I18NInitializer.pm`: `Locale::Maketext` with gettext lexicons,
 exposed to templates as the `lh` helper, honoring a forced language setting before falling back
 to `Accept-Language` negotiation. Observability is split between `Logging.pm`/`RotatingLog.pm`
 (loggers, plugin loggers, rotation with `flock`) and `Metrics.pm` (Prometheus counters:
 `extract_endpoint()` normalizes request paths to route templates to limit label cardinality,
-and `read_proc_stat`/`read_proc_statm`/`read_proc_io_bytes` etc. feed process metrics).
+and `read_proc_stat`/`read_proc_statm`/`read_proc_io_bytes` etc. feed process metrics). The
+`RotatingLog` rotation trigger is size-based — 1 MiB by default (`LRR_LOGROTATE_SIZE`), checked
+every 1000 appended lines — gzipping old files as `<log>.N.gz` and keeping `LRR_LOGROTATE_FILES`
+of them (default 7).
 
 ## Everything Else
 
 - **Data layer.** `Database.pm` covers archive CRUD (`add_archive_to_redis`, `set_tags`,
   `set_title`, `set_summary`, `get_archive_json_multi`, `compute_id`, `invalidate_cache`,
   `get_computed_tagrules`, `update_indexes`, `clean_database`). `Redis.pm` is just the
-  encode/decode pair with Unicode NFC normalization. `PageCache.pm` wraps CHI — FastMmap driver
-  on Unix, Memory on Windows — capped at `min(tempmaxsize, 4096)` MB.
+  encode/decode pair: `redis_encode()` applies NFC normalization before UTF-8 encoding, while
+  `redis_decode()` double-decodes with `FB_CROAK`. `PageCache.pm` wraps CHI — FastMmap driver
+  on Unix, Memory on Windows — capped at `max(0, min(tempmaxsize, 4096))` MB.
 - **Filesystem.** `Path.pm` (`create_path`, `open_path_or_die`, `get_archive_path`,
   `package_to_path`/`path_to_package`, `compat_path`) and `TempFolder.pm` (`get_temp`).
   `String.pm` holds `clean_title`, `trim`, `trim_url`, and `most_similar` (backed by
