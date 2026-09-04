@@ -110,6 +110,25 @@ definedness 的检查（本应记录 Couldn't create thumbnail! 日志）可能�
 注意 Windows 上的不对称性：`MCE::Loop` 并行仅限 Unix（libarchive 线程），因此缩略图
 与查重任务在 Windows 上退回顺序执行。
 
+### 重复检测端到端
+
+`find_duplicates` 值得细看，因为它的结果支撑着一整个页面。任务扫描所有 40 字符档案 ID 的
+`thumbhash`（合集没有该字段），随后用洪水填充聚类哈希。当两个哈希的 SHA-1 十六进制字符串
+至多有 `$threshold` 个*字符*不同时即视为"接近"——距离逐字符计数（并非逐位），一旦超过
+阈值就提前退出。查重页面把阈值写死：`public/js/duplicates.js` 以
+`/api/minion/find_duplicates/queue?args=[5]&priority=0` 入队该任务。包含两个及以上成员的
+分组会写入 `LRR_DUPLICATE_GROUPS`（配置数据库），字段为 `dupgp_<key>`，其中 key 是组内
+成员按排序后各自 ID 前 10 个字符的拼接——因此同一组档案总是映射到同一字段。一个结构性
+怪癖：`visited` 集合在 MCE worker 之间共享，因此与已被其他 worker 分组吸收的档案接近的
+哈希会被跳过，而仅剩单个成员的残余组会被 `>= 2` 过滤器丢弃——边缘分组因此可能被漏报。
+
+`lib/LANraragi/Controller/Duplicates.pm` 用该哈希渲染 `/duplicates` 页面：修剪过期分组
+（只剩一对时删除整个字段，否则重写 JSON 去掉已消失的 ID），并在 `delete` 请求参数存在时
+清空全部分组。`public/js/duplicates.js` 把各组显示在一张带分隔行的 DataTable 中，提供
+自动勾选规则（按标签更少/体积更小/页数更少/更早/更晚挑出"较差"的重复项），并通过
+`DELETE /api/archives/{id}` 删除档案。这种视觉匹配与上传时的重复拒绝（`replacedupe`）
+彼此独立，后者比较的是精确 ID 与文件名。
+
 ## 并发与加锁
 
 `lib/LANraragi/Utils/Generic.pm` 基于 Redis `SET NX EX` 提供两个加锁入口：
@@ -127,6 +146,40 @@ definedness 的检查（本应记录 Couldn't create thumbnail! 日志）可能�
 `start_shinobu()` 对文件监视器做同样的事。`split_workload_by_cpu()`
 会把数组切成每 CPU 一份，但上述 Minion 任务是把完整 key 列表交给 `mce_loop`、由 MCE
 内部切块——目前没有任何调用方使用它。
+
+## Shinobu 文件监视器
+
+`lib/Shinobu.pm` 作为独立进程运行——直接执行该文件就会调用
+`initialize_from_new_process()`——`start_shinobu()` 在每次应用启动时拉起它，而
+`lib/LANraragi.pm` 的 `startup()` 会先经 `shinobu.pid` 中 Storable 冻结的 `Proc::Simple`
+句柄杀掉残留实例（仅 Unix）。监视本身由
+`File::ChangeNotify->instantiate_watcher()` 对内容目录完成，过滤正则与
+`lib/LANraragi/Utils/Generic.pm` 中 `is_archive()` 的档案扩展名正则相同
+（`zip|rar|7z|tar|tar.gz|lzma|xz|cbz|cbr|cb7|cbt|cbw|pdf|epub|tar.zst|zst`），跟随符号链接
+并排除 `thumb`/隐藏目录；一个手工循环每秒轮询一次 `new_events()`。
+
+在开始监视之前，`update_filemap()` 会做一次完整递归扫描并与 `LRR_FILEMAP` 求差集：已消失
+的路径从文件映射中剪除，新档案走与实时事件相同的 `add_to_filemap()` 路径（Unix 上经
+`mce_loop` 并行）。实时事件把 `create`/`modify` 映射到 `new_file_callback()`，把 `delete`
+映射到 `deleted_file_callback()`：
+
+- **新增或修改的文件。** `add_to_filemap()` 复查 `is_archive()`，等待文件可打开且至少
+  512000 字节（每秒一次、最多 5 次后放弃——更小的文件仍可能在写入中途被读取），计算 ID
+  并取得 `archive-write:$id` 锁（TTL 60 秒）后才运行 `update_filemap_entry()`。ID 发生
+  变化时经 `change_archive_id()` 做非破坏性迁移——Redis 哈希被 `rename`，标签得以保留，
+  这与上传时的重复替换不同。全新 ID 会在锁*外*触发 `add_new_file()`：
+  `add_archive_to_redis()`、`add_timestamp_tag()`、`add_pagecount()`、
+  `extract_thumbnail()`，然后是自动插件轮 `exec_enabled_plugins_on_file()`，最后
+  `invalidate_cache()`。`lib/LANraragi/Model/Upload.pm` 的两阶段 `.upload` 暂存正是为了让
+  Shinobu 只看到完整文件（`.upload` 既不匹配监视过滤器也不匹配 `is_archive()`）。
+- **被删除的文件。** 该路径被从 `LRR_FILEMAP` 中 `hdel`，搜索缓存失效——档案的 Redis
+  哈希*不会*被删除，因此它作为孤儿残留，直到 `clean_database()` 清扫它。
+
+`lib/LANraragi/Controller/Api/Shinobu.pm` 中的 API 控制对应四个 `/shinobu` 操作：
+`shinobu_status()`（存活标志 + 取自 `shinobu.pid` 的 PID）、`stop_shinobu()`（仅杀死）、
+`restart_shinobu()`（杀死后重启），以及 `reset_filemap()`——即 `/shinobu/rescan` 端点，
+它 DELETE 掉 `LRR_FILEMAP` 并重启进程，让新进程完成完整重扫。所有触及数据库的回调都用
+`eval` 包裹并记录到 `shinobu` 日志；启用指标时该进程约每 30 秒采集一次自身计数器。
 
 ## 标签规则
 
@@ -176,7 +229,13 @@ base64 API key 的 `Authorization` 头、`key` 请求参数（OPDS 使用）、�
   `get_computed_tagrules`、`update_indexes`、`clean_database`）。`Redis.pm` 只是编码/解码
   函数对：`redis_encode()` 在 UTF-8 编码前先做 NFC 规范化，`redis_decode()` 则以
   `FB_CROAK` 做双重解码。`PageCache.pm` 封装 CHI——Unix 上用
-  FastMmap 驱动，Windows 上用 Memory——容量上限为 `max(0, min(tempmaxsize, 4096))` MB。
+  FastMmap 驱动（数据文件位于应用临时目录），Windows 上用 Memory——容量上限为
+  `max(0, min(tempmaxsize, 4096))` MB。缓存中只有两种键形态：`page/$id/$path` 下的原始
+  页面字节（由 `get_page_data()` 及 CBW 预取/缩略图暂存写入），以及
+  `resize_page/$id/$path/$threshold/$quality` 下的调整尺寸变体。条目没有 TTL，档案编辑或
+  删除时也没有任何失效逻辑——唯一的清除路径是 `DELETE /api/tempfolder`
+  （`clean_tempfolder()` 调用 `PageCache::clear()`），因此被删档案的页面会一直留到容量
+  逐出为止。
 - **文件系统。** `Path.pm`（`create_path`、`open_path_or_die`、`get_archive_path`、
   `package_to_path`/`path_to_package`、`compat_path`）与 `TempFolder.pm`（`get_temp`）。
   `String.pm` 持有 `clean_title`、`trim`、`trim_url` 和 `most_similar`（由

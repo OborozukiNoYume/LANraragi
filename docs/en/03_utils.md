@@ -113,6 +113,31 @@ thumbnail!") can miss the failure. That is a latent code quirk, documented here 
 Note the Windows asymmetry: `MCE::Loop` parallelism is Unix-only (libarchive threading), so the
 thumbnail and duplicate jobs fall back to sequential execution there.
 
+### Duplicate detection, end to end
+
+`find_duplicates` deserves a closer look, since its result powers a whole page. Every
+40-character archive ID is scanned for a `thumbhash` (tanks don't carry one); hashes are then
+clustered by flood fill. Two hashes are "close" when their SHA-1 hex strings differ in at most
+`$threshold` *characters* — the distance is counted character-by-character, not bit-by-bit,
+with an early exit once the threshold is exceeded. The duplicates page hardcodes the threshold:
+`public/js/duplicates.js` queues the job as
+`/api/minion/find_duplicates/queue?args=[5]&priority=0`. Groups of two or more members are
+written into `LRR_DUPLICATE_GROUPS` (config DB) under a `dupgp_<key>` field whose key is the
+concatenation of each member's first 10 ID characters after sorting the group, so the same set
+of archives always maps to the same field. One structural quirk: the `visited` set is shared
+across the MCE workers, so a hash close to an archive already absorbed into another worker's
+group is skipped, and single-member remainders are dropped by the `>= 2` filter — borderline
+groups can therefore be under-reported.
+
+`lib/LANraragi/Controller/Duplicates.pm` renders `/duplicates` from that hash: it prunes stale
+groups (drops the whole field when only a pair remains, otherwise rewrites the JSON without the
+vanished ID) and wipes all groups when the `delete` request parameter is set.
+`public/js/duplicates.js` displays the groups as one DataTable with separator rows, offers
+auto-select rules ("worst" duplicate by fewer tags / smaller size / fewer pages / older /
+younger) and deletes archives through `DELETE /api/archives/{id}`. This visual matching is
+independent of upload-time duplicate rejection (`replacedupe`), which compares exact IDs and
+filenames instead.
+
 ## Concurrency and Locking
 
 `lib/LANraragi/Utils/Generic.pm` provides two locking entry points over Redis `SET NX EX`:
@@ -131,6 +156,44 @@ count with `MCE::Util::get_ncpu()` and launches it in a `Proc::Simple` subproces
 `Proc::Simple` object stored in `minion.pid`, the raw PID in `minion.pid-s6`), while `start_shinobu()` does the same for the file watcher. `split_workload_by_cpu()`
 splits an array into per-CPU chunks, but the Minion tasks above hand their full key list to
 `mce_loop` and let MCE chunk internally — nothing currently calls it.
+
+## The Shinobu File Watcher
+
+`lib/Shinobu.pm` runs as its own process — executing the file directly calls
+`initialize_from_new_process()` — and `start_shinobu()` launches it at every app boot, after
+`LANraragi.pm`'s `startup()` kills any stale instance through the Storable-frozen `Proc::Simple`
+handle in `shinobu.pid` (Unix only). Watching is done by
+`File::ChangeNotify->instantiate_watcher()` over the content folder, filtering on the same
+archive-extension regex as `is_archive()` in `lib/LANraragi/Utils/Generic.pm`
+(`zip|rar|7z|tar|tar.gz|lzma|xz|cbz|cbr|cb7|cbt|cbw|pdf|epub|tar.zst|zst`), following symlinks
+and excluding `thumb`/hidden directories; a manual loop polls `new_events()` once per second.
+
+Before watching, `update_filemap()` runs a full recursive scan and diffs it against
+`LRR_FILEMAP`: vanished paths are pruned from the filemap and new archives go through the same
+`add_to_filemap()` path as live events (parallelized with `mce_loop` on Unix). Live events map
+`create`/`modify` to `new_file_callback()` and `delete` to `deleted_file_callback()`:
+
+- **New or modified file.** `add_to_filemap()` re-checks `is_archive()`, waits for the file to
+  be openable and at least 512000 bytes (bailing out after 5 one-second tries — smaller files
+  can still be read mid-write), computes the ID and takes the `archive-write:$id` lock (TTL 60 s)
+  before `update_filemap_entry()` runs. A changed ID is migrated non-destructively via
+  `change_archive_id()` — the Redis hash is `rename`d so tags survive, unlike upload-time
+  duplicate replacement. A brand-new ID triggers `add_new_file()` *outside* the lock:
+  `add_archive_to_redis()`, `add_timestamp_tag()`, `add_pagecount()`, `extract_thumbnail()`,
+  then the auto-plugin pass `exec_enabled_plugins_on_file()`, followed by `invalidate_cache()`.
+  The two-phase `.upload` staging in `lib/LANraragi/Model/Upload.pm` exists precisely so
+  Shinobu only ever sees complete files (`.upload` matches neither the watcher filter nor
+  `is_archive()`).
+- **Deleted file.** The path is `hdel`ed from `LRR_FILEMAP` and the search cache invalidated —
+  the archive's Redis hash is *not* removed, so it lingers as an orphan until `clean_database()`
+  sweeps it.
+
+The API controls in `lib/LANraragi/Controller/Api/Shinobu.pm` map to the four `/shinobu`
+operations: `shinobu_status()` (alive flag + PID from `shinobu.pid`), `stop_shinobu()` (kill
+only), `restart_shinobu()` (kill + relaunch), and `reset_filemap()` — the `/shinobu/rescan`
+endpoint DELETEs `LRR_FILEMAP` and restarts the process, so the fresh boot performs the full
+rescan. Every DB-touching callback wraps its work in `eval` and logs to the `shinobu` log; with
+metrics enabled the process collects its own counters roughly every 30 seconds.
 
 ## Tag Rules
 
@@ -183,7 +246,13 @@ of them (default 7).
   `get_computed_tagrules`, `update_indexes`, `clean_database`). `Redis.pm` is just the
   encode/decode pair: `redis_encode()` applies NFC normalization before UTF-8 encoding, while
   `redis_decode()` double-decodes with `FB_CROAK`. `PageCache.pm` wraps CHI — FastMmap driver
-  on Unix, Memory on Windows — capped at `max(0, min(tempmaxsize, 4096))` MB.
+  on Unix (data files under the app temp dir), Memory on Windows — capped at
+  `max(0, min(tempmaxsize, 4096))` MB. Only two key shapes exist: raw page bytes under
+  `page/$id/$path` (written by `get_page_data()` and by the CBW prefetch/thumbnail stash) and
+  resized variants under `resize_page/$id/$path/$threshold/$quality`. Entries carry no TTL, and
+  nothing invalidates them on archive edit or deletion — the sole clear path is
+  `DELETE /api/tempfolder` (`clean_tempfolder()` calling `PageCache::clear()`), so pages of
+  deleted archives linger until size eviction.
 - **Filesystem.** `Path.pm` (`create_path`, `open_path_or_die`, `get_archive_path`,
   `package_to_path`/`path_to_package`, `compat_path`) and `TempFolder.pm` (`get_temp`).
   `String.pm` holds `clean_title`, `trim`, `trim_url`, and `most_similar` (backed by
