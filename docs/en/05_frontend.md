@@ -85,7 +85,7 @@ DOM. All follow the same shape (`import * as Server from "./mod/server.js"; impo
 |---|---|
 | `backup.js` | Backup import/export (blueimp jQuery-File-Upload for restore files). |
 | `batch.js` | Batch tag/plugin operations. Loads the archive checklist from `/api/archives` (pre-checking untagged ones via `/api/archives/untagged`), or a subset from `localStorage.msmSelection` written by the index's multi-select mode (expanding `TANK_` ids through `/api/tankoubons/{id}` + `/api/archives/{id}/metadata`), then drives the websocket. |
-| `category.js` | Category management. |
+| `category.js` | Category management: create/update/delete categories (`/api/categories` CRUD), toggle membership per archive (`PUT`/`DELETE /api/categories/{id}/{archive}`), and set or clear the bookmark link (`/api/categories/bookmark_link`). |
 | `config.js` | Server configuration (all settings tabs). |
 | `duplicates.js` | Duplicate detection UI. |
 | `edit.js` | Archive metadata editing; tag input via `@jcubic/tagger` and SortableJS tag ordering, both loaded as classic globals (`tagger.js`, `Sortable.min.js`) by `templates/edit.html.tt2`. |
@@ -93,7 +93,7 @@ DOM. All follow the same shape (`import * as Server from "./mod/server.js"; impo
 | `plugins.js` | Plugin management and upload. |
 | `reader.js` | One-line re-export: `export { initializeAll } from "./mod/reader_common.js";` — kept so `templates/reader.html.tt2` can load a stable URL while the implementation lives in `mod/`. |
 | `stats.js` | Statistics dashboard (jqCloud via `templates/stats.html.tt2`). |
-| `upload.js` | Upload page (jQuery-File-Upload). |
+| `upload.js` | Upload page (jQuery-File-Upload): files post to `/upload` (queueing the `handle_upload` Minion job) and URL lines to `POST /api/download_url`; both are tracked with `checkJobStatus(..., useDetail = true)`. |
 
 ## The Reader
 

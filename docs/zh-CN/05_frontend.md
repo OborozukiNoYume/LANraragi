@@ -84,7 +84,7 @@ DOM。它们都遵循相同形态（`import * as Server from "./mod/server.js"; 
 |---|---|
 | `backup.js` | 备份导入/导出（恢复文件使用 blueimp jQuery-File-Upload）。 |
 | `batch.js` | 批量标签/插件操作。从 `/api/archives` 加载档案清单（并经 `/api/archives/untagged` 预勾选无标签档案），或从索引多选模式写入的 `localStorage.msmSelection` 加载子集（`TANK_` id 经 `/api/tankoubons/{id}` + `/api/archives/{id}/metadata` 展开），随后驱动 websocket。 |
-| `category.js` | 分类管理。 |
+| `category.js` | 分类管理：创建/更新/删除分类（`/api/categories` CRUD），按档案切换成员关系（`PUT`/`DELETE /api/categories/{id}/{archive}`），以及设置或清除书签链接（`/api/categories/bookmark_link`）。 |
 | `config.js` | 服务器配置（全部设置标签页）。 |
 | `duplicates.js` | 重复检测界面。 |
 | `edit.js` | 档案元数据编辑；标签输入使用 `@jcubic/tagger`，标签排序使用 SortableJS，二者均由 `templates/edit.html.tt2` 作为经典全局脚本加载（`tagger.js`、`Sortable.min.js`）。 |
@@ -92,7 +92,7 @@ DOM。它们都遵循相同形态（`import * as Server from "./mod/server.js"; 
 | `plugins.js` | 插件管理与上传。 |
 | `reader.js` | 一行再导出：`export { initializeAll } from "./mod/reader_common.js";` —— 保留它是为了让 `templates/reader.html.tt2` 能加载一个稳定的 URL，而实现放在 `mod/` 中。 |
 | `stats.js` | 统计仪表盘（jqCloud，经 `templates/stats.html.tt2`）。 |
-| `upload.js` | 上传页面（jQuery-File-Upload）。 |
+| `upload.js` | 上传页面（jQuery-File-Upload）：文件提交到 `/upload`（入队 `handle_upload` Minion 任务），URL 行提交到 `POST /api/download_url`；两者都以 `checkJobStatus(..., useDetail = true)` 跟踪。 |
 
 ## 阅读器
 
