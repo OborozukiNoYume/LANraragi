@@ -156,6 +156,14 @@ DOM。它们都遵循相同形态（`import * as Server from "./mod/server.js"; 
 wake lock。通过翻页控件（按键、点击、分页器、空格键）的手动翻页会重置倒计时；直接的
 `goToPage()` 跳转——跳页输入框、覆盖层缩略图、章节选择器——则不会。
 
+档案覆盖层在每次翻页时由 `updateArchiveOverlay()` 重建：当当前页仍处于当前章节范围内时直接
+跳过重建，否则由 `getCurrentChapter()` 决定可见的页面窗口与标题。章节渲染为
+`#chapter-select` 下拉框（嵌套子章节缩进显示），登录用户仅在叶子章节上看到编辑/删除入口；
+`addTocSection()`/`removeTocSection()` 维护底层的 `toc` 条目。覆盖层还管理档案所属的分类
+（经 `#category` 下拉添加、经徽标链接移除，由 `addCategoryBadge()`/`removeCategoryBadge()`
+处理），并且 `checkStampedPages()` 会轮询 `GET /api/archives/{id}/stamps/`，给带戳记的页面
+缩略图打标——单行本模式下页索引经 `getArchiveForPage()` 换算，使戳记映射回成员档案的本地页。
+
 ## 前端依赖
 
 下列版本逐字复制自基准 commit 时的 `package.json`（`^` 范围按声明原样——请以

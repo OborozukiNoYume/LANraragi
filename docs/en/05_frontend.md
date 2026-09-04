@@ -164,6 +164,17 @@ boundary, resuming via a `sessionStorage autoNextPage` flag and holding a wake l
 turn through the paging controls (keys, clicks, paginator, spacebar) resets the countdown; direct
 `goToPage()` jumps — the go-to-page prompt, overlay thumbnails and chapter selectors — do not.
 
+The archive overlay is rebuilt by `updateArchiveOverlay()` on every page turn: the rebuild is
+skipped while the current page stays inside the current chapter's range, otherwise
+`getCurrentChapter()` decides the visible page window and heading. Chapters render as a
+`#chapter-select` dropdown (nested sub-chapters indented), with edit/delete affordances only on
+leaf chapters for logged-in users; `addTocSection()`/`removeTocSection()` maintain the underlying
+`toc` entries. The overlay also manages the archive's categories (add via the `#category` select,
+remove via badge links, handled by `addCategoryBadge()`/`removeCategoryBadge()`), and
+`checkStampedPages()` polls `GET /api/archives/{id}/stamps/` to mark page thumbnails that carry
+stamps — in tank mode page indices translate through `getArchiveForPage()` so stamps map back to
+the member archive's local pages.
+
 ## Frontend dependencies
 
 Versions below are copied verbatim from `package.json` at the baseline commit (`^` ranges as declared — treat
