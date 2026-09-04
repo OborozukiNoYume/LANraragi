@@ -112,7 +112,7 @@ LANraragi 将其全部状态保存在单个 Redis 实例中，并划分到五个
 | `dirname` | `./content` | `apikey` | *（空）* |
 | `thumbdir` | `./thumb` | `localprogress` | `0` |
 | `devmode` | `0` | `authprogress` | `0` |
-| `password` | bcrypt 哈希 | `tagruleson` | `1` |
+| `password` | bcrypt 哈希（默认：`kamimamita`） | `tagruleson` | `1` |
 | `tagrules` | 排除列表 | `enableresize` | `0` |
 | `disableopenapi` | `0` | `sizethreshold` | `1000` |
 | `htmltitle` | `LANraragi` | `readerquality` | `50` |

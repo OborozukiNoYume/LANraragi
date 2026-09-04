@@ -184,7 +184,7 @@ DOM。它们都遵循相同形态（`import * as Server from "./mod/server.js"; 
 | `duplicates.html.tt2` | `Duplicates.pm` 的 `index()` | `/duplicates`（需登录） |
 
 其余模板是没有自己路由的局部模板：`footer.html.tt2` 被 13 个页面模板 INCLUDE，
-`common/importmap.html.tt2` 被 12 个 INCLUDE（除 `login` 外的所有页面）；六个
+`common/importmap.html.tt2` 被 12 个 INCLUDE（除 `login` 和 `i18n` 外的所有页面）；六个
 `templates_config/*` 标签页仅被 `config.html.tt2` INCLUDE；两个 OPDS XML 局部模板
 （`opds.html.tt2`、`opds_entry.html.tt2`）由 `lib/LANraragi/Model/Opds.pm` 经
 `render_to_string()` 渲染，而非任何控制器。`.ep` 文件覆盖 Mojolicious 内置的

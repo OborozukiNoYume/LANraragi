@@ -262,6 +262,20 @@ or simply having password enforcement disabled. `lib/LANraragi/Utils/OpenAPI.pm`
 bypasses request *and* response validation entirely; otherwise requests are still validated, but
 failures are logged server-side and rendered as a 400 body.
 
+Web sessions are a separate mechanism from API auth. `login#check` verifies the posted password
+against the bcrypt hash stored in `LRR_CONFIG → password` (default: the hash of `kamimamita`)
+via the `Crypt::Passphrase` authenticator built by `get_authenticator()` in
+`lib/LANraragi/Utils/Generic.pm`, transparently rehashing when the stored hash needs an upgrade,
+and on success sets `session(is_logged => 1)` with a 24-hour expiration; `logged_in()` in
+`lib/LANraragi/Controller/Login.pm` gates the web routes and `/logout` expires the session. The
+Mojolicious session secret is a random hex string persisted to `temp/oshino` and combined with
+the hostname at startup (`lib/LANraragi.pm`). There is no forced password change: the index page
+merely toasts a warning while the default password verifies (`Index.pm` stashes `usingdefpass`),
+and the password is set through the normal config save — `save_config()` in
+`lib/LANraragi/Controller/Config.pm` hashes `newpassword` with the same authenticator, but only
+when `enablepass` is posted. No CSRF tokens exist anywhere; signed session cookies are the only
+request-integrity mechanism.
+
 Localization lives in `I18N.pm`/`I18NInitializer.pm`: `Locale::Maketext` with gettext lexicons,
 exposed to templates as the `lh` helper, honoring a forced language setting before falling back
 to `Accept-Language` negotiation. Observability is split between `Logging.pm`/`RotatingLog.pm`

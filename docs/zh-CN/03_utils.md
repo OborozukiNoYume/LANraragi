@@ -245,6 +245,17 @@ base64 API key 的 `Authorization` 头、`key` 请求参数（OPDS 使用）、�
 `apply_openapi_mojo_overrides()` 重新接管 `openapi.valid_input`：设置 `disableopenapi` 时
 完全绕过请求*与*响应校验；否则请求照常校验，但失败会在服务端记录日志并渲染为 400 响应体。
 
+Web 会话是与 API 鉴权相互独立的机制。`login#check` 经由 `lib/LANraragi/Utils/Generic.pm` 中
+`get_authenticator()` 构建的 `Crypt::Passphrase` 认证器，把提交的密码与 `LRR_CONFIG →
+password` 中存储的 bcrypt 哈希（默认为 `kamimamita` 的哈希）比对，存储的哈希需要升级时会
+透明地重新散列，成功后设置 `session(is_logged => 1)` 并给予 24 小时有效期；`lib/LANraragi/Controller/Login.pm`
+中的 `logged_in()` 守卫 Web 路由，`/logout` 使会话过期。Mojolicious 会话密钥是一个持久化到
+`temp/oshino` 的随机十六进制串，启动时与主机名拼接（`lib/LANraragi.pm`）。这里没有强制的
+密码更换：只要默认密码仍能通过验证，首页只会弹一条警告 toast（`Index.pm` 会置
+`usingdefpass`）；密码通过普通的配置保存修改——`lib/LANraragi/Controller/Config.pm` 的
+`save_config()` 用同一认证器散列 `newpassword`，但仅在提交了 `enablepass` 时才写入。代码中
+不存在任何 CSRF 令牌；签名的会话 cookie 是唯一的请求完整性机制。
+
 本地化位于 `I18N.pm`/`I18NInitializer.pm`：基于 gettext 词表的 `Locale::Maketext`，
 以 `lh` helper 暴露给模板，优先遵循强制语言设置，再回退到 `Accept-Language` 协商。
 可观测性一分为二：`Logging.pm`/`RotatingLog.pm`（日志器、插件日志器，以及基于大小的

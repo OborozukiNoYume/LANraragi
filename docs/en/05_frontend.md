@@ -185,7 +185,8 @@ Fourteen templates are full pages rendered by a controller route (auth classes a
 | `duplicates.html.tt2` | `Duplicates.pm` `index()` | `/duplicates` (logged in) |
 
 The other templates are partials with no route of their own: `footer.html.tt2` is INCLUDEd by
-13 page templates and `common/importmap.html.tt2` by 12 (every page except `login`); the six
+13 page templates and `common/importmap.html.tt2` by 12 (every page except `login` and `i18n`);
+the six
 `templates_config/*` tabs are INCLUDEd only by `config.html.tt2`; and the two OPDS XML partials
 (`opds.html.tt2`, `opds_entry.html.tt2`) are rendered via `render_to_string()` from
 `lib/LANraragi/Model/Opds.pm` rather than by any controller. The `.ep` files override

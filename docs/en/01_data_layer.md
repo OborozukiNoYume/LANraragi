@@ -112,7 +112,7 @@ Step-by-step through `do_search()` / `search_uncached()` in `lib/LANraragi/Model
 | `dirname` | `./content` | `apikey` | *(empty)* |
 | `thumbdir` | `./thumb` | `localprogress` | `0` |
 | `devmode` | `0` | `authprogress` | `0` |
-| `password` | bcrypt hash | `tagruleson` | `1` |
+| `password` | bcrypt hash (default: `kamimamita`) | `tagruleson` | `1` |
 | `tagrules` | exclusion list | `enableresize` | `0` |
 | `disableopenapi` | `0` | `sizethreshold` | `1000` |
 | `htmltitle` | `LANraragi` | `readerquality` | `50` |
