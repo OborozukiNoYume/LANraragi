@@ -83,7 +83,7 @@ DOM. All follow the same shape (`import * as Server from "./mod/server.js"; impo
 | Script | Page |
 |---|---|
 | `backup.js` | Backup import/export (blueimp jQuery-File-Upload for restore files). |
-| `batch.js` | Batch tag/plugin operations. |
+| `batch.js` | Batch tag/plugin operations. Loads the archive checklist from `/api/archives` (pre-checking untagged ones via `/api/archives/untagged`), or a subset from `localStorage.msmSelection` written by the index's multi-select mode (expanding `TANK_` ids through `/api/tankoubons/{id}` + `/api/archives/{id}/metadata`), then drives the websocket. |
 | `category.js` | Category management. |
 | `config.js` | Server configuration (all settings tabs). |
 | `duplicates.js` | Duplicate detection UI. |

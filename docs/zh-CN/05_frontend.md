@@ -82,7 +82,7 @@ DOM。它们都遵循相同形态（`import * as Server from "./mod/server.js"; 
 | 脚本 | 页面 |
 |---|---|
 | `backup.js` | 备份导入/导出（恢复文件使用 blueimp jQuery-File-Upload）。 |
-| `batch.js` | 批量标签/插件操作。 |
+| `batch.js` | 批量标签/插件操作。从 `/api/archives` 加载档案清单（并经 `/api/archives/untagged` 预勾选无标签档案），或从索引多选模式写入的 `localStorage.msmSelection` 加载子集（`TANK_` id 经 `/api/tankoubons/{id}` + `/api/archives/{id}/metadata` 展开），随后驱动 websocket。 |
 | `category.js` | 分类管理。 |
 | `config.js` | 服务器配置（全部设置标签页）。 |
 | `duplicates.js` | 重复检测界面。 |
