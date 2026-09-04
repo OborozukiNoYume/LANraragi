@@ -163,6 +163,34 @@ in `server.js`'s `cleanDatabase()`), so page scripts rarely hard-code user-visib
   `templates/config.html.tt2` composes the six settings tabs from `templates/templates_config/`
   (`config_global`, `config_theme`, `config_security`, `config_files`, `config_tags`, `config_shinobu`).
   The app sets Template Toolkit as its default renderer in `lib/LANraragi.pm` (`default_handler('tt2')`).
+
+Fourteen templates are full pages rendered by a controller route (auth classes as registered in
+`lib/LANraragi/Utils/Routing.pm`; "public" routes still move behind session login under No-Fun Mode):
+
+| Template | Rendered by | Route |
+|---|---|---|
+| `index.html.tt2` | `Index.pm` `index()` | `/`, `/index` (public) |
+| `reader.html.tt2` | `Reader.pm` `index()` | `/reader` (public) |
+| `stats.html.tt2` | `Stats.pm` `index()` | `/stats` (public) |
+| `login.html.tt2` | `Login.pm` `index()`, re-rendered by `check()` on a wrong password | `GET`/`POST /login` (public) |
+| `i18n.html.tt2` | `Controller/I18N.pm` `index()`, served as `application/javascript` | `/js/i18n.js` (public) |
+| `config.html.tt2` | `Config.pm` `index()` | `/config` (logged in) |
+| `plugins.html.tt2` | `Plugins.pm` `index()` | `/config/plugins` (logged in) |
+| `category.html.tt2` | `Category.pm` `index()` | `/config/categories` (logged in) |
+| `batch.html.tt2` | `Batch.pm` `index()` | `/batch` (logged in) |
+| `edit.html.tt2` | `Edit.pm` `index()`, which dispatches to `edit_tankoubon()` for `TANK_`-prefixed IDs | `/edit` (logged in) |
+| `backup.html.tt2` | `Backup.pm` `index()` | `/backup` (logged in) |
+| `upload.html.tt2` | `Upload.pm` `index()` | `/upload` (logged in) |
+| `logs.html.tt2` | `Logging.pm` `index()` (the `/logs/*` sub-pages return raw text, not templates) | `/logs` (logged in) |
+| `duplicates.html.tt2` | `Duplicates.pm` `index()` | `/duplicates` (logged in) |
+
+The other templates are partials with no route of their own: `footer.html.tt2` is INCLUDEd by
+13 page templates and `common/importmap.html.tt2` by 12 (every page except `login`); the six
+`templates_config/*` tabs are INCLUDEd only by `config.html.tt2`; and the two OPDS XML partials
+(`opds.html.tt2`, `opds_entry.html.tt2`) are rendered via `render_to_string()` from
+`lib/LANraragi/Model/Opds.pm` rather than by any controller. The `.ep` files override
+Mojolicious' built-in `exception`/`not_found` templates and render only in production mode —
+`lib/LANraragi.pm` sets the mode explicitly from the `devmode` setting.
 - Themes are plain stylesheets in `public/themes/` — five at baseline: `ex.css`, `g.css`, `modern.css`,
   `modern_clear.css`, `modern_red.css`. `generate_themes_header()` in `lib/LANraragi/Utils/Generic.pm` emits a
   `<link>` for each (default) or `alternate stylesheet` (others), tagged with friendly names

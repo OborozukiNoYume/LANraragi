@@ -162,6 +162,34 @@ DOM。它们都遵循相同形态（`import * as Server from "./mod/server.js"; 
   `templates/config.html.tt2` 由 `templates/templates_config/` 中的六个设置标签页组合而成
   （`config_global`、`config_theme`、`config_security`、`config_files`、`config_tags`、`config_shinobu`）。
   应用在 `lib/LANraragi.pm` 中将 Template Toolkit 设为默认渲染器（`default_handler('tt2')`）。
+
+十四个模板是由控制器路由渲染的完整页面（鉴权类别以 `lib/LANraragi/Utils/Routing.pm` 的注册为准；
+"公开"路由在 No-Fun Mode 下同样会移到会话登录之后）：
+
+| 模板 | 渲染方 | 路由 |
+|---|---|---|
+| `index.html.tt2` | `Index.pm` 的 `index()` | `/`、`/index`（公开） |
+| `reader.html.tt2` | `Reader.pm` 的 `index()` | `/reader`（公开） |
+| `stats.html.tt2` | `Stats.pm` 的 `index()` | `/stats`（公开） |
+| `login.html.tt2` | `Login.pm` 的 `index()`，密码错误时由 `check()` 重新渲染 | `GET`/`POST /login`（公开） |
+| `i18n.html.tt2` | `Controller/I18N.pm` 的 `index()`，以 `application/javascript` 提供 | `/js/i18n.js`（公开） |
+| `config.html.tt2` | `Config.pm` 的 `index()` | `/config`（需登录） |
+| `plugins.html.tt2` | `Plugins.pm` 的 `index()` | `/config/plugins`（需登录） |
+| `category.html.tt2` | `Category.pm` 的 `index()` | `/config/categories`（需登录） |
+| `batch.html.tt2` | `Batch.pm` 的 `index()` | `/batch`（需登录） |
+| `edit.html.tt2` | `Edit.pm` 的 `index()`，对 `TANK_` 前缀 ID 分派给 `edit_tankoubon()` | `/edit`（需登录） |
+| `backup.html.tt2` | `Backup.pm` 的 `index()` | `/backup`（需登录） |
+| `upload.html.tt2` | `Upload.pm` 的 `index()` | `/upload`（需登录） |
+| `logs.html.tt2` | `Logging.pm` 的 `index()`（`/logs/*` 子页面返回原始文本，而非模板） | `/logs`（需登录） |
+| `duplicates.html.tt2` | `Duplicates.pm` 的 `index()` | `/duplicates`（需登录） |
+
+其余模板是没有自己路由的局部模板：`footer.html.tt2` 被 13 个页面模板 INCLUDE，
+`common/importmap.html.tt2` 被 12 个 INCLUDE（除 `login` 外的所有页面）；六个
+`templates_config/*` 标签页仅被 `config.html.tt2` INCLUDE；两个 OPDS XML 局部模板
+（`opds.html.tt2`、`opds_entry.html.tt2`）由 `lib/LANraragi/Model/Opds.pm` 经
+`render_to_string()` 渲染，而非任何控制器。`.ep` 文件覆盖 Mojolicious 内置的
+`exception`/`not_found` 模板，且只在生产模式下渲染——`lib/LANraragi.pm` 会依据 `devmode`
+设置显式设定运行模式。
 - 主题是 `public/themes/` 下的普通样式表——基准时有五个：`ex.css`、`g.css`、`modern.css`、
   `modern_clear.css`、`modern_red.css`。`lib/LANraragi/Utils/Generic.pm` 中的 `generate_themes_header()`
   为每个主题输出一个 `<link>`（默认主题）或 `alternate stylesheet`（其余主题），并标注友好名称

@@ -129,6 +129,38 @@ definedness 的检查（本应记录 Couldn't create thumbnail! 日志）可能�
 `DELETE /api/archives/{id}` 删除档案。这种视觉匹配与上传时的重复拒绝（`replacedupe`）
 彼此独立，后者比较的是精确 ID 与文件名。
 
+### 谁入队哪个任务
+
+代码库中的全部入队点（服务端 `->enqueue(` 调用加客户端队列 API），以及各任务的参数与
+显式 Minion 选项：
+
+| 任务 | 入队方 | 参数 | 选项 |
+|------|-----------|------|---------|
+| `thumbnail_task` | `lib/LANraragi/Model/Archive.pm` 的 `serve_thumbnail()`（缩略图缺失且 `no_fallback`） | `($thumbdir, $id, $page)` | priority 0，3 次尝试 |
+| `tank_thumbnail_task` | `lib/LANraragi/Model/Tankoubon.pm` 的 `serve_tankoubon_thumbnail()`；`lib/LANraragi/Controller/Api/Tankoubon.pm` 的 `update_tankoubon()`/`remove_from_tankoubon()` | `($thumbdir, $tank_id)` | priority 0，3 次尝试 |
+| `page_thumbnails` | `lib/LANraragi/Model/Archive.pm` 的 `generate_page_thumbnails()`（经 `thumbjob` 去重） | `($id, $force)` | priority 0，3 次尝试 |
+| `regen_all_thumbnails` | `lib/LANraragi/Controller/Api/Other.pm` 的 `regen_thumbnails()`（`POST /api/regen_thumbs`） | `($thumbdir, $force)` | priority 0 |
+| `find_duplicates` | 仅客户端——`public/js/duplicates.js` | `($threshold)`（写死为 5） | priority 0 |
+| `build_stat_hashes` | `lib/LANraragi.pm` 的 `startup()`（每次启动）；`lib/LANraragi/Utils/Database.pm` 的 `invalidate_cache(1)` | — | 默认 / priority 3 |
+| `handle_upload` | `lib/LANraragi/Controller/Upload.pm` 的 `process_upload()` | `($tempfile, $catid)` | priority 2 |
+| `download_url` | `lib/LANraragi/Controller/Api/Other.pm` 的 `download_url()`（`POST /api/download_url`） | `($url, $catid)` | priority 1，5 次尝试 |
+| `run_plugin` | `lib/LANraragi/Controller/Api/Other.pm` 的 `use_plugin_async()`（`POST /api/plugins/queue`） | `($namespace, $id, $scriptarg)` | 客户端提供的 priority |
+| `install_plugin` | `lib/LANraragi/Controller/Api/Plugins.pm` 的 `install_plugin()` | `($namespace, $registry_id, $version, $force)` | priority 0，1 次尝试（不重试） |
+| `backup_json` | `lib/LANraragi/Controller/Api/Database.pm` 的 `queue_backup()` | — | priority 0 |
+| `restore_backup` | `lib/LANraragi/Controller/Api/Database.pm` 的 `queue_restore()` | `($json_data)` | priority 0 |
+
+进度上报是例外而非惯例：只有 `page_thumbnails`（逐页 note 外加 `total_pages`/`id`，由
+阅读器的缩略图进度 UI 消费）和两个由 Backup 驱动的任务
+（`build_backup_JSON`/`restore_from_JSON` 会 note `categories_processed`/`tankoubons_processed`/
+`archives_processed`、`total_*` 与 `status` 消息）发布 `$job->note` 数据。
+
+队列 API（`POST /api/minion/{jobname}/queue`）通过 `tools/openapi.yaml` 中 `jobname`
+参数上的 `enum` 恰好白名单了九个任务名——即上表中除 `install_plugin`、`backup_json` 和
+`restore_backup` 之外的全部，后三者只能经各自的专用端点触达。`GET /api/minion/{jobid}`
+渲染经过筛选的 `{task, state, notes, error}` 对象，而 `GET /api/minion/{jobid}/detail`
+渲染完整的 `$job->info` 哈希——正是这种广度使它需要 `api_key` 方案。控制器自身不做任何
+校验，因此该枚举只在 OpenAPI 校验开启时生效。
+
 ## 并发与加锁
 
 `lib/LANraragi/Utils/Generic.pm` 基于 Redis `SET NX EX` 提供两个加锁入口：

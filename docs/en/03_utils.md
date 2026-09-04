@@ -138,6 +138,39 @@ younger) and deletes archives through `DELETE /api/archives/{id}`. This visual m
 independent of upload-time duplicate rejection (`replacedupe`), which compares exact IDs and
 filenames instead.
 
+### Who queues which task
+
+Every enqueue site in the codebase (server-side `->enqueue(` calls plus the client-side queue
+API), with each task's arguments and explicit Minion options:
+
+| Task | Queued by | Args | Options |
+|------|-----------|------|---------|
+| `thumbnail_task` | `serve_thumbnail()` in `lib/LANraragi/Model/Archive.pm` (missing thumb + `no_fallback`) | `($thumbdir, $id, $page)` | priority 0, 3 attempts |
+| `tank_thumbnail_task` | `serve_tankoubon_thumbnail()` in `lib/LANraragi/Model/Tankoubon.pm`; `update_tankoubon()`/`remove_from_tankoubon()` in `lib/LANraragi/Controller/Api/Tankoubon.pm` | `($thumbdir, $tank_id)` | priority 0, 3 attempts |
+| `page_thumbnails` | `generate_page_thumbnails()` in `lib/LANraragi/Model/Archive.pm` (dedup via `thumbjob`) | `($id, $force)` | priority 0, 3 attempts |
+| `regen_all_thumbnails` | `regen_thumbnails()` in `lib/LANraragi/Controller/Api/Other.pm` (`POST /api/regen_thumbs`) | `($thumbdir, $force)` | priority 0 |
+| `find_duplicates` | client only — `public/js/duplicates.js` | `($threshold)` (hardcoded 5) | priority 0 |
+| `build_stat_hashes` | `startup()` in `lib/LANraragi.pm` (every boot); `invalidate_cache(1)` in `lib/LANraragi/Utils/Database.pm` | — | default / priority 3 |
+| `handle_upload` | `process_upload()` in `lib/LANraragi/Controller/Upload.pm` | `($tempfile, $catid)` | priority 2 |
+| `download_url` | `download_url()` in `lib/LANraragi/Controller/Api/Other.pm` (`POST /api/download_url`) | `($url, $catid)` | priority 1, 5 attempts |
+| `run_plugin` | `use_plugin_async()` in `lib/LANraragi/Controller/Api/Other.pm` (`POST /api/plugins/queue`) | `($namespace, $id, $scriptarg)` | client-supplied priority |
+| `install_plugin` | `install_plugin()` in `lib/LANraragi/Controller/Api/Plugins.pm` | `($namespace, $registry_id, $version, $force)` | priority 0, 1 attempt (no retry) |
+| `backup_json` | `queue_backup()` in `lib/LANraragi/Controller/Api/Database.pm` | — | priority 0 |
+| `restore_backup` | `queue_restore()` in `lib/LANraragi/Controller/Api/Database.pm` | `($json_data)` | priority 0 |
+
+Progress reporting is the exception, not the rule: only `page_thumbnails` (per-page notes plus
+`total_pages`/`id`, consumed by the reader's thumbnail progress UI) and the two Backup-driven
+jobs (`build_backup_JSON`/`restore_from_JSON` note `categories_processed`/`tankoubons_processed`/
+`archives_processed`, `total_*`, and a `status` message) publish `$job->note` data.
+
+The queue API (`POST /api/minion/{jobname}/queue`) whitelists exactly nine jobnames through the
+`enum` on `jobname` in `tools/openapi.yaml` — everything in the table except `install_plugin`,
+`backup_json`, and `restore_backup`, which are only reachable through their dedicated
+endpoints. `GET /api/minion/{jobid}` renders a filtered `{task, state, notes, error}` object,
+while `GET /api/minion/{jobid}/detail` renders the full `$job->info` hash — that breadth is why
+it needs the `api_key` scheme. The controller does no validation of its own, so the enum is
+only enforced while OpenAPI validation is enabled.
+
 ## Concurrency and Locking
 
 `lib/LANraragi/Utils/Generic.pm` provides two locking entry points over Redis `SET NX EX`:
