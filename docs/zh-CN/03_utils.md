@@ -195,8 +195,8 @@ definedness 的检查（本应记录 Couldn't create thumbnail! 日志）可能�
 `mce_loop` 并行）。实时事件把 `create`/`modify` 映射到 `new_file_callback()`，把 `delete`
 映射到 `deleted_file_callback()`：
 
-- **新增或修改的文件。** `add_to_filemap()` 复查 `is_archive()`，等待文件可打开且至少
-  512000 字节（每秒一次、最多 5 次后放弃——更小的文件仍可能在写入中途被读取），计算 ID
+- **新增或修改的文件。** `add_to_filemap()` 复查 `is_archive()`，等待文件可打开，再等待其达到
+  512000 字节（该大小等待每秒一次、最多 5 次后放弃——更小的文件仍可能在写入中途被读取），计算 ID
   并取得 `archive-write:$id` 锁（TTL 60 秒）后才运行 `update_filemap_entry()`。ID 发生
   变化时经 `change_archive_id()` 做非破坏性迁移——Redis 哈希被 `rename`，标签得以保留，
   这与上传时的重复替换不同。全新 ID 会在锁*外*触发 `add_new_file()`：

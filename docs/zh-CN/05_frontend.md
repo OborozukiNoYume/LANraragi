@@ -38,7 +38,8 @@ import map 的浏览器提供 polyfill。
 `tippy-bundle.umd.min.js` 等）通过页面模板中的普通 `<script src>` 标签加载（参见
 `templates/index.html.tt2` 和 `templates/reader.html.tt2`），并在模块代码中作为全局变量（`$`、`tippy`、……）
 使用。模板通常用一个内联 `<script type="module">` 引导：导入该页面的模块，并在
-`jQuery(...)` ready 回调中启动 `initializeAll()`。
+`jQuery(...)` ready 回调中启动 `initializeAll()`（阅读器模板是例外，它在模块顶层直接 await
+`initializeAll()`）。
 
 ## 核心模块：`public/js/mod/`
 

@@ -207,8 +207,9 @@ Before watching, `update_filemap()` runs a full recursive scan and diffs it agai
 `create`/`modify` to `new_file_callback()` and `delete` to `deleted_file_callback()`:
 
 - **New or modified file.** `add_to_filemap()` re-checks `is_archive()`, waits for the file to
-  be openable and at least 512000 bytes (bailing out after 5 one-second tries — smaller files
-  can still be read mid-write), computes the ID and takes the `archive-write:$id` lock (TTL 60 s)
+  be openable, then waits for it to reach 512000 bytes (bailing out of that size wait after 5
+  one-second tries — smaller files can still be read mid-write), computes the ID and takes the
+  `archive-write:$id` lock (TTL 60 s)
   before `update_filemap_entry()` runs. A changed ID is migrated non-destructively via
   `change_archive_id()` — the Redis hash is `rename`d so tags survive, unlike upload-time
   duplicate replacement. A brand-new ID triggers `add_new_file()` *outside* the lock:

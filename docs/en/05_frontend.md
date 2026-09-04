@@ -38,7 +38,8 @@ jQuery and the other classic scripts (`jquery.min.js`, `jquery.dataTables.min.js
 `tippy-bundle.umd.min.js`, etc.) are loaded via plain `<script src>` tags in the page templates (see
 `templates/index.html.tt2` and `templates/reader.html.tt2`) and used as globals (`$`, `tippy`, ...) from module
 code. Templates typically bootstrap with an inline `<script type="module">` that imports the page's modules and
-kicks off `initializeAll()` inside a `jQuery(...)` ready callback.
+kicks off `initializeAll()` inside a `jQuery(...)` ready callback (the reader template is the
+exception, awaiting `initializeAll()` at module top level).
 
 ## Core modules: `public/js/mod/`
 
