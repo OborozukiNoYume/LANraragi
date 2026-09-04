@@ -74,7 +74,6 @@ LANraragi 插件是位于 `lib/LANraragi/Plugin/` 下的普通 Perl 包，通过
 `exec_login_plugin()` 从 `login_from` 构建）和 `oneshot_param`。插件返回
 `tags`/`title`/`summary`（或 `error`）；返回的标签在启用时经过标签规则过滤，并与
 `existing_tags` 去重——但单次运行路径只把它们*返回*给调用方而不写入。在
-`existing_tags` 去重——但单次运行路径只把它们*返回*给调用方而不写入。在
 `archive-write:$id` 锁下写入的步骤位于自动插件变体 `exec_enabled_plugins_on_file()`
 中——它在上传后以及 Shinobu 发现新文件时运行，还会强制 `regexplugin` 命名空间
 （`Plugin/Metadata/RegexParse.pm`）最先运行。批量打标签 websocket 走第三条路：
