@@ -178,7 +178,7 @@ clamped), though the endpoint's `|| 1` default masks `page=0` before it reaches 
 
 ## Plugins & Registries: `Model/Plugins.pm`, `Model/Registry.pm`
 
-`Plugins.pm` (the largest Model module) covers:
+`Plugins.pm` covers:
 
 - Execution: `exec_enabled_plugins_on_file($id)` (autoplugin pass after upload), `exec_metadata_plugin()`,
   `exec_script_plugin()`, `exec_download_plugin()`, `exec_login_plugin()` (the configured login plugin used by
@@ -226,5 +226,6 @@ and the default-registry accessors. `lib/LANraragi.pm` refreshes every registry 
   creates the default "🔖 Favorites" category, links it to the bookmark button, and seeds the default plugin
   registry ("Ougi", `https://github.com/Difegue/Ougi.git`, branch `main`).
 - **`Server.pm`** — a single `LRR_SERVER` hash in the config DB holding the `restart_pending` flag:
-  `set_restart_pending()` (after plugin install/uninstall), `clear_restart_pending()` (at startup),
+  `set_restart_pending()` (after plugin uninstall, and after installs that replace an
+  already-registered plugin), `clear_restart_pending()` (at startup),
   `is_restart_pending()` (polled by the UI to prompt a restart).

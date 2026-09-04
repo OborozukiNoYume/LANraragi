@@ -26,8 +26,9 @@ skips any package whose type's required method is missing (`can('run_script')`,
 ## The `plugin_info` Contract
 
 Every plugin returns a hash from `plugin_info()`. Standard keys (as declared by the built-in
-plugins): `name`, `type`, `namespace`, `author`, `version`, `description`, and `icon` (a base64
-data URI). Optional keys:
+plugins): `name`, `type`, `namespace`, `author`, `version`, and `description`. `icon` (a base64
+data URI) is near-standard: 21 of the 32 built-ins declare it (every Login and Download plugin
+omits it). Optional keys:
 
 | Key | Used by | Meaning |
 |-----|---------|---------|
@@ -77,8 +78,11 @@ the spot via `extract_thumbnail()` if missing), `file_path`, `user_agent` (built
 `tags`/`title`/`summary` (or `error`); returned tags are filtered through tag rules when
 enabled and deduplicated against `existing_tags` — but the single-run paths only *return* them
 to the caller without writing. The write under an `archive-write:$id` lock lives in
-`exec_enabled_plugins_on_file()`, the batch/autoplugin variant, which also forces the
-`regexplugin` namespace (`Plugin/Metadata/RegexParse.pm`) to run first.
+`exec_enabled_plugins_on_file()`, the autoplugin variant that runs after uploads and for files
+Shinobu discovers, which also forces the
+`regexplugin` namespace (`Plugin/Metadata/RegexParse.pm`) to run first. The Batch Tagging
+websocket takes a third path: `batch_plugin()` in `lib/LANraragi/Controller/Batch.pm` writes via
+`set_tags`/`set_title`/`set_summary` *without* the `archive-write:$id` lock.
 
 ### Script plugins
 

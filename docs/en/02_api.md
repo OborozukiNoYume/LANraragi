@@ -248,8 +248,10 @@ The remaining misc endpoints have a few non-obvious edges:
 - `DELETE /api/tempfolder` does not delete arbitrary temp files: it clears the PageCache
   (`PageCache::clear()`), and its `newsize` response field is hardcoded to `0` even though the
   spec describes it as the post-cleanup folder size.
-- `POST /api/plugins/use` and `/api/plugins/queue` have no lock/423 path; plugin errors come
-  back as HTTP 200 with `success: 0`. `use_plugin()` in `lib/LANraragi/Utils/Plugins.pm` only
+- `POST /api/plugins/use` and `/api/plugins/queue` have no lock/423 path. On `/plugins/use`,
+  plugin errors come back as HTTP 200 with `success: 0`; on `/plugins/queue` the HTTP answer is
+  always `success: 1` with a job id, and errors are visible only by polling the job.
+  `use_plugin()` in `lib/LANraragi/Utils/Plugins.pm` only
   dispatches `script` and `metadata` types — anything else yields an empty `data` object.
 - `GET /api/plugins/{type}` accepts `all` alongside the four types and returns each plugin's
   `plugin_info` augmented with `parameters` (as a name-bearing array), `registry`, `sha256`

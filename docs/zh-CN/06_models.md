@@ -177,7 +177,7 @@ LIMIT` 分页）；`update_archive_list()`/`add_to_tankoubon()`/`remove_from_tan
 
 ## 插件与注册表：`Model/Plugins.pm`、`Model/Registry.pm`
 
-`Plugins.pm`（最大的模型模块）涵盖：
+`Plugins.pm` 涵盖：
 
 - 执行：`exec_enabled_plugins_on_file($id)`（上传后的自动插件轮）、`exec_metadata_plugin()`、
   `exec_script_plugin()`、`exec_download_plugin()`、`exec_login_plugin()`（下载器使用的已配置
@@ -225,5 +225,5 @@ LIMIT` 分页）；`update_archive_list()`/`add_to_tankoubon()`/`remove_from_tan
   安装，创建默认的“🔖 Favorites”分类，将其链接到书签按钮，并播种默认插件
   注册表（“Ougi”、`https://github.com/Difegue/Ougi.git`、分支 `main`）。
 - **`Server.pm`** —— 配置数据库中仅有的一个 `LRR_SERVER` 哈希，持有 `restart_pending`
-  标志：`set_restart_pending()`（插件安装/卸载后）、`clear_restart_pending()`（启动时）、
+  标志：`set_restart_pending()`（插件卸载后，以及替换已注册插件的安装后）、`clear_restart_pending()`（启动时）、
   `is_restart_pending()`（由 UI 轮询以提示重启）。

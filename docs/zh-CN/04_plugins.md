@@ -26,7 +26,8 @@ LANraragi 插件是位于 `lib/LANraragi/Plugin/` 下的普通 Perl 包，通过
 ## `plugin_info` 契约
 
 每个插件从 `plugin_info()` 返回一个哈希。标准键（由内置插件声明）：`name`、`type`、
-`namespace`、`author`、`version`、`description` 和 `icon`（base64 data URI）。可选键：
+`namespace`、`author`、`version` 和 `description`。`icon`（base64 data URI）接近标准：
+32 个内置插件中有 21 个声明了它（所有 Login 与 Download 插件均省略）。可选键：
 
 | 键 | 使用者 | 含义 |
 |-----|---------|---------|
@@ -73,8 +74,12 @@ LANraragi 插件是位于 `lib/LANraragi/Plugin/` 下的普通 Perl 包，通过
 `exec_login_plugin()` 从 `login_from` 构建）和 `oneshot_param`。插件返回
 `tags`/`title`/`summary`（或 `error`）；返回的标签在启用时经过标签规则过滤，并与
 `existing_tags` 去重——但单次运行路径只把它们*返回*给调用方而不写入。在
-`archive-write:$id` 锁下写入的步骤位于批量/自动插件变体 `exec_enabled_plugins_on_file()`
-中，它还会强制 `regexplugin` 命名空间（`Plugin/Metadata/RegexParse.pm`）最先运行。
+`existing_tags` 去重——但单次运行路径只把它们*返回*给调用方而不写入。在
+`archive-write:$id` 锁下写入的步骤位于自动插件变体 `exec_enabled_plugins_on_file()`
+中——它在上传后以及 Shinobu 发现新文件时运行，还会强制 `regexplugin` 命名空间
+（`Plugin/Metadata/RegexParse.pm`）最先运行。批量打标签 websocket 走第三条路：
+`lib/LANraragi/Controller/Batch.pm` 的 `batch_plugin()` 经 `set_tags`/`set_title`/`set_summary`
+写入，*不加* `archive-write:$id` 锁。
 
 ### 脚本插件
 

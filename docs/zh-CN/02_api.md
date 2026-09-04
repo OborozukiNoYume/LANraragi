@@ -245,8 +245,9 @@
   `success: 0, message: "URL already downloaded!"` 结束，只能通过任务轮询看到。
 - `DELETE /api/tempfolder` 并不删除任意临时文件：它清空 PageCache（`PageCache::clear()`），
   其响应中的 `newsize` 字段被硬编码为 `0`，尽管规格把它描述为清理后的文件夹大小。
-- `POST /api/plugins/use` 与 `/api/plugins/queue` 没有锁/423 路径；插件错误以 HTTP 200 加
-  `success: 0` 返回。`lib/LANraragi/Utils/Plugins.pm` 中的 `use_plugin()` 只分派 `script` 与
+- `POST /api/plugins/use` 与 `/api/plugins/queue` 没有锁/423 路径。在 `/plugins/use` 上，插件
+  错误以 HTTP 200 加 `success: 0` 返回；在 `/plugins/queue` 上 HTTP 回答总是携带任务 id 的
+  `success: 1`，错误只能通过轮询任务看到。`lib/LANraragi/Utils/Plugins.pm` 中的 `use_plugin()` 只分派 `script` 与
   `metadata` 两种类型——其他类型只会得到空的 `data` 对象。
 - `GET /api/plugins/{type}` 除四种类型外还接受 `all`，返回每个插件的 `plugin_info`，并增补
   `parameters`（带名称的数组）、`registry`、`sha256` 与 `origin`——但没有 `enabled` 标志。
