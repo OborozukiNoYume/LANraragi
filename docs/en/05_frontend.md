@@ -235,3 +235,30 @@ Mojolicious' built-in `exception`/`not_found` templates and render only in produ
   (Sad Panda, H-Verse, Hachikuji, Yotsugi, Nadeko respectively); the selected one is stored as the `theme` key in
   the config database. Any CSS file dropped into the folder is automatically pickable.
 - Shared page chrome (`lrr.css`, `config.css` and vendor CSS) lives under `public/css/`.
+
+### The configuration page, tab by tab
+
+`POST /config` (`save_config()` in `lib/LANraragi/Controller/Config.pm`) copies request
+parameters into `LRR_CONFIG` from a fixed whitelist — 13 scalars (`htmltitle`, `motd`,
+`dirname`, `thumbdir`, `pagesize`, `tagrules`, `tempmaxsize`, `apikey`, `readerquality`,
+`sizethreshold`, `theme`, `language`, `excludednamespaces`) and 16 checkboxes (absent from the
+POST = `0`); anything else the form submits is ignored. `newpassword` is special-cased into a
+`{CRYPT}` bcrypt hash when `enablepass` is posted (a mismatched confirmation fails the save),
+numeric fields are validated, and the `tagrules` textarea is additionally parsed into the
+`LRR_TAGRULES` list. The response is plain JSON and nothing restarts the server — tabs that need
+a restart just say so in their text.
+
+Which tab owns which key does not always follow intuition:
+
+| Tab | Keys / actions |
+|---|---|
+| Global Settings | `htmltitle`, `motd`, `language`, `pagesize`, `enableresize`, `sizethreshold`, `readerquality`, `localprogress`, `authprogress`, `devmode`, `enablemetrics` — plus the Clean/Drop database buttons |
+| Theme | `theme` (radio list generated from `public/themes/`) |
+| Security | `enablepass` with `newpassword`/`newpassword2`, `nofunmode`, `apikey`, `enablecors`, `disableopenapi` |
+| Archive Files | `dirname` (disabled when `LRR_DATA_DIRECTORY` is set), `enablecryptofs`, `tempmaxsize`, `replacedupe` — plus the rescan, clean-temp, reset-cache and clear-new buttons |
+| Tags and Thumbnails | `thumbdir` (disabled when `LRR_THUMB_DIRECTORY` is set), `hqthumbpages`, `jxlthumbpages`, `usedateadded`, `usedatemodified`, `excludednamespaces`, `tagruleson`, `tagrules` — plus the thumbnail regeneration buttons |
+| Background Workers | no writable settings — Shinobu status polling (`GET /api/shinobu`), the restart button and a link to `/minion` |
+
+`replacetitles` is the one straggler: its checkbox lives on the plugin configuration page
+(`templates/plugins.html.tt2`) and is saved by `Controller/Plugins.pm`'s own `save_config` via
+`POST /config/plugins`, not by the main settings form.

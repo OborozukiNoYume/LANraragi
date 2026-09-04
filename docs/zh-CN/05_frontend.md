@@ -226,3 +226,28 @@ wake lock。通过翻页控件（按键、点击、分页器、空格键）的�
   （依次为 Sad Panda、H-Verse、Hachikuji、Yotsugi、Nadeko）；选中的主题作为 `theme` 键存储在
   配置数据库中。放入该文件夹的任何 CSS 文件都会自动变为可选。
 - 共享的页面框架样式（`lrr.css`、`config.css` 及第三方 CSS）位于 `public/css/` 之下。
+
+### 配置页面逐标签页详解
+
+`POST /config`（`lib/LANraragi/Controller/Config.pm` 中的 `save_config()`）把请求参数按一份
+固定白名单复制进 `LRR_CONFIG`——13 个标量（`htmltitle`、`motd`、`dirname`、`thumbdir`、
+`pagesize`、`tagrules`、`tempmaxsize`、`apikey`、`readerquality`、`sizethreshold`、`theme`、
+`language`、`excludednamespaces`）和 16 个复选框（POST 中缺席即为 `0`）；表单提交的其余内容
+一律忽略。`newpassword` 被特殊处理：提交 `enablepass` 时散列为 `{CRYPT}` bcrypt 哈希（两次
+输入不一致会使保存失败），数值字段会做校验，`tagrules` 文本域还会被额外解析进 `LRR_TAGRULES`
+列表。响应是普通 JSON，没有任何逻辑会重启服务器——需要重启的标签页只在文案里说明。
+
+哪个标签页拥有哪个键并不总符合直觉：
+
+| 标签页 | 键 / 操作 |
+|---|---|
+| 全局设置 | `htmltitle`、`motd`、`language`、`pagesize`、`enableresize`、`sizethreshold`、`readerquality`、`localprogress`、`authprogress`、`devmode`、`enablemetrics`——外加清理/清空数据库按钮 |
+| 主题 | `theme`（由 `public/themes/` 生成的单选列表） |
+| 安全 | `enablepass` 与 `newpassword`/`newpassword2`、`nofunmode`、`apikey`、`enablecors`、`disableopenapi` |
+| 档案文件 | `dirname`（设置了 `LRR_DATA_DIRECTORY` 时禁用）、`enablecryptofs`、`tempmaxsize`、`replacedupe`——外加重扫、清理临时目录、重置缓存、清除新档按钮 |
+| 标签与缩略图 | `thumbdir`（设置了 `LRR_THUMB_DIRECTORY` 时禁用）、`hqthumbpages`、`jxlthumbpages`、`usedateadded`、`usedatemodified`、`excludednamespaces`、`tagruleson`、`tagrules`——外加缩略图重生成按钮 |
+| 后台工作者 | 无可写设置——Shinobu 状态轮询（`GET /api/shinobu`）、重启按钮和指向 `/minion` 的链接 |
+
+`replacetitles` 是唯一的落单者：它的复选框位于插件配置页（`templates/plugins.html.tt2`），
+由 `Controller/Plugins.pm` 自己的 `save_config` 经 `POST /config/plugins` 保存，而非主设置
+表单。
