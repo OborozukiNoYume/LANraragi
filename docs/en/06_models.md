@@ -166,7 +166,14 @@ PSE (Page Streamed Extension) support lives in the same templates: entries embed
 `http://vaemendis.net/opds-pse/stream` link pointing at `/api/opds/{id}/pse?page={pageNumber}` with
 `pse:count`/`pse:lastRead` attributes; the endpoint (`Controller/Api/Other.pm`'s `serve_opds_page`) calls
 `Opds::render_archive_page()`, which resolves the page number against the archive's file list and serves it
-through `Archive::serve_page()`.
+through `Archive::serve_page()`. Catalog pagination slices `do_search` by the common `pagesize`
+setting and emits an unconditional `rel="next"` link (`start` advanced by the served entry
+count; there is no `rel="prev"`), threading `?key=` through every link; categories become OPDS
+facets with `thr:count`. The feed-level `<updated>` timestamp is hardcoded
+(`2010-01-10T10:03:10Z` in `templates/opds.html.tt2`); entry timestamps derive from each
+archive's `date_added` tag. In `render_archive_page()` the PSE page number is 1-based and wraps
+to page 1 when out of range — but `0` or negative values index from the end of the file list (a
+quirk, not clamped).
 
 ## Plugins & Registries: `Model/Plugins.pm`, `Model/Registry.pm`
 

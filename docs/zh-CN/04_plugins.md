@@ -133,6 +133,21 @@ UserAgent。登录插件没有 `$lrr_info`；它们只接收自己配置的参�
 获取与校验原语（`fetch_registry_resource`、`validate_registry_index`、
 `find_package_conflict`、`find_namespace_conflict`、`resolve_max_version`）。
 
+注册表条目存放在 `REG_<10位时间戳>` 哈希中（字段为 `%PROVIDER_FIELDS` 中的提供方字段，
+外加 `created`/`updated`），`refresh_registry()` 会把抓取到的索引原文缓存进一个
+`REG_INDEX_<后缀>` 字符串键——安装时读取该缓存，缺失即失败并返回 `409 No registry index
+cached. Run refresh first.`。`validate_registry_index()` 强制执行的索引 schema：根对象含
+`version`（必须为 1）、`generated_at`（UTC RFC3339）与 `plugins`；每个插件以其小写的
+`[a-z0-9_-]` 命名空间为键，携带 `type`（四种托管类型之一）和一个 `versions` 映射——映射键
+是不带前导 `v` 的 SemVer 2.0.0 字符串，每个条目必须有 `name`、`author`、`description`、
+`artifact`（安全的相对路径）、64 位小写 `sha256` 和 `published_at`。产物 URL 按提供方解析
+（`resolve_git_raw_url()`/`resolve_cdn_artifact_url()`）：GitHub →
+`https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>`，Gitea →
+`https://<host>/api/v1/repos/<owner>/<repo>/raw/<path>?ref=<ref>`，CDN → 转义后的产物路径
+拼接到基础 URL，本地 → 注册表根目录之下的路径（带逃逸检查）。`install_plugin()` 默认挑选
+最大的 SemVer 版本，除非调用方固定了版本。默认注册表并不是专用键，而是 `LRR_CONFIG` 哈希
+中的 `default_registry` 字段。
+
 安装是事务性的：`Model/Plugins.pm` 的 `install_plugin()`（由 `install_plugin`
 Minion 任务驱动，经 `exec_with_lock_pure` 的 `plugin-write:{NAMESPACE}` 锁串行化）
 获取产物，对照索引校验其 SHA-256，将声明的包名与预期的 `Managed/{Type}/` 路径核对，

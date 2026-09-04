@@ -106,6 +106,31 @@ The file `lrr.conf` at the repo root is read by `lib/LANraragi/Model/Config.pm` 
 
 `lib/LANraragi/Model/Config.pm` also honors environment overrides at startup: `LRR_REDIS_ADDRESS` (replaces `redis_address`), `LRR_DATA_DIRECTORY` and `LRR_THUMB_DIRECTORY` (content/thumb paths), `LRR_FORCE_DEBUG`, `LRR_DEVSERVER` (debug mode) and `LRR_DISABLE_OPENAPI` (skips serving the OpenAPI spec).
 
+## Server startup
+
+`npm start` reaches `script/launcher.pl`, which picks the server: `-m` runs
+`Mojo::Server::Morbo` (setting `MOJO_MODE=development`), `-d` runs `Mojo::Server::Daemon`, and
+the default is `Mojo::Server::Prefork` — listening on `LRR_NETWORK` (default `http://*:3000`),
+writing its PID file to `<LRR_TEMP_DIRECTORY>/server.pid` (`./temp/server.pid` otherwise), and
+daemonizing unless `-f` is passed. The launcher creates the content/thumb/temp directories when
+the corresponding env vars are set, then loads the app class directly (`script/lanraragi` itself
+is just `Mojolicious::Commands->start_app('LANraragi')`).
+
+`LANraragi::startup()` then runs, in order: loads or generates the session secret
+(`temp/oshino` combined with the hostname), registers the `RenderFile`/`TemplateToolkit`
+plugins (tt2 as default handler) and the `LRR_*` helpers, checks Redis with a `ping` (dying
+with a flip-table message if unreachable) followed by an unbounded retry loop with 2-second
+sleeps for transient `LOADING` errors, initializes PageCache and i18n, migrates legacy `LRR_*`
+keys into the config DB, switches to development mode per `devmode`, redirects Mojo's own log
+into the rotating `mojo` logger, runs `scan_plugins()` and refreshes every registry, clears the
+restart-pending flag, wires the Minion client (`missing_after(5)`), registers the twelve tasks,
+enqueues `build_stat_hashes`, and launches the Minion worker and Shinobu subprocesses.
+`first_install_actions()` runs last, before the `before_dispatch` hooks (base-url prefix +
+`lrr_baseurl` cookie, plus a lazily-installed SIGINT handler) and the optional metrics hooks are
+installed; `apply_routes()` finishes startup. Shutdown handling is SIGINT-only — the handler is
+installed on the first request, so a signal before any page load is not trapped — and kills the
+Shinobu/Minion subprocesses via their PID files before invoking the default handler.
+
 ## Docker
 
 `npm run docker-build` builds `tools/build/docker/Dockerfile` — a three-stage build (`base` → `build` → `runtime`) based on `FROM alpine:3.24`. Alpine packages include `valkey`/`valkey-cli` (the in-container datastore), `s6-overlay` (init + supervision), `vips` with jxl/heif/poppler addons (thumbnails), `perl`, `perl-io-socket-ssl`, `perl-local-lib` and `tzdata`. The `build` stage compiles the CPAN dependencies and vendors npm assets; only the results are copied into `runtime`.

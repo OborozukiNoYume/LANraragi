@@ -139,6 +139,22 @@ Registries are git/CDN/local sources of a `registry.json` index, managed by
 validation primitives (`fetch_registry_resource`, `validate_registry_index`,
 `find_package_conflict`, `find_namespace_conflict`, `resolve_max_version`).
 
+Registry entries live in `REG_<10-digit-epoch>` hashes (provider fields per `%PROVIDER_FIELDS`
+plus `created`/`updated`), and `refresh_registry()` caches the fetched index verbatim in a
+`REG_INDEX_<suffix>` string key — installs read that cache and fail with `409 No registry index
+cached. Run refresh first.` when it is missing. The index schema enforced by
+`validate_registry_index()`: a root object with `version` (must be 1), `generated_at` (UTC
+RFC3339) and `plugins`; each plugin is keyed by its lowercase `[a-z0-9_-]` namespace and carries
+`type` (one of the four managed types) plus a `versions` map whose keys are SemVer 2.0.0 strings
+without a leading `v`, each entry requiring `name`, `author`, `description`, `artifact` (a safe
+relative path), a 64-character lowercase `sha256`, and `published_at`. Artifact URLs resolve per
+provider (`resolve_git_raw_url()`/`resolve_cdn_artifact_url()`): GitHub →
+`https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>`, Gitea →
+`https://<host>/api/v1/repos/<owner>/<repo>/raw/<path>?ref=<ref>`, CDN → the escaped artifact
+path appended to the base URL, local → a path under the registry root (with an escape check).
+`install_plugin()` picks the greatest SemVer version unless the caller pins one. The default
+registry is not a dedicated key but the `default_registry` field of the `LRR_CONFIG` hash.
+
 Installation is transactional: `install_plugin()` in `Model/Plugins.pm` (driven by the
 `install_plugin` Minion task, serialized by an `exec_with_lock_pure` `plugin-write:{NAMESPACE}`
 lock) fetches the artifact, verifies its SHA-256 against the index, validates the declared

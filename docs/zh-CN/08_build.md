@@ -106,6 +106,27 @@ Docker 构建路径使用 `tools/build/docker/install-perl-deps.sh`，它会引�
 
 `lib/LANraragi/Model/Config.pm` 在启动时还支持环境变量覆盖：`LRR_REDIS_ADDRESS`（替换 `redis_address`）、`LRR_DATA_DIRECTORY` 和 `LRR_THUMB_DIRECTORY`（内容/缩略图路径）、`LRR_FORCE_DEBUG`、`LRR_DEVSERVER`（调试模式）以及 `LRR_DISABLE_OPENAPI`（跳过 OpenAPI 规范的服务）。
 
+## 服务器启动
+
+`npm start` 会进入 `script/launcher.pl`，由它挑选服务器：`-m` 运行 `Mojo::Server::Morbo`
+（并设置 `MOJO_MODE=development`），`-d` 运行 `Mojo::Server::Daemon`，默认则是
+`Mojo::Server::Prefork`——监听 `LRR_NETWORK`（默认 `http://*:3000`），把 PID 文件写到
+`<LRR_TEMP_DIRECTORY>/server.pid`（否则为 `./temp/server.pid`），且除非传入 `-f` 否则守护
+进程化。启动器会在对应环境变量存在时创建内容/缩略图/临时目录，然后直接加载应用类
+（`script/lanraragi` 本身只是 `Mojolicious::Commands->start_app('LANraragi')`）。
+
+`LANraragi::startup()` 随后按顺序执行：加载或生成会话密钥（`temp/oshino` 与主机名拼接），
+注册 `RenderFile`/`TemplateToolkit` 插件（tt2 为默认处理器）与各 `LRR_*` 助手，用 `ping`
+检查 Redis（不可达时输出掀桌消息并 die），随后进入针对瞬时 `LOADING` 错误、每 2 秒一次的
+无限重试循环，初始化 PageCache 与 i18n，把遗留的 `LRR_*` 键迁移进配置数据库，依 `devmode`
+切换到开发模式，把 Mojo 自身的日志重定向到轮转的 `mojo` 日志，运行 `scan_plugins()` 并刷新
+每个注册表，清除重启待定标志，接线 Minion 客户端（`missing_after(5)`），注册十二个任务，
+入队 `build_stat_hashes`，并启动 Minion worker 与 Shinobu 子进程。`first_install_actions()`
+最后运行，其后再安装 `before_dispatch` 钩子（基础 URL 前缀 + `lrr_baseurl` cookie，外加
+惰性安装的 SIGINT 处理器）与可选的指标钩子；`apply_routes()` 为启动收尾。关停处理仅针对
+SIGINT——处理器在首个请求到来时才安装，因此任何页面加载之前的信号不会被捕获——它会先经
+PID 文件杀死 Shinobu/Minion 子进程，再调用默认处理器。
+
 ## Docker
 
 `npm run docker-build` 构建 `tools/build/docker/Dockerfile` —— 一个基于 `FROM alpine:3.24` 的三阶段构建（`base` → `build` → `runtime`）。Alpine 软件包包括 `valkey`/`valkey-cli`（容器内数据存储）、`s6-overlay`（init + 进程监护）、带 jxl/heif/poppler 扩展的 `vips`（缩略图）、`perl`、`perl-io-socket-ssl`、`perl-local-lib` 和 `tzdata`。`build` 阶段编译 CPAN 依赖并 vendor npm 资源；只有结果会被复制进 `runtime`。
