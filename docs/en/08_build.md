@@ -83,7 +83,7 @@ Two further utility scripts exist outside npm: `script/get_version` prints the v
 
 `tools/install.pl` (reached via `npm run lanraragi-installer [mode]`) supports three modes:
 
-- `install-front` — npm install and vendor frontend assets from `node_modules` into `public/js/vendor/`, `public/css/vendor/` and `public/css/webfonts` (the file lists live in `tools/install.pl` itself, with `esbuild` bundling a few ESM packages).
+- `install-front` — `npm ci` and vendor frontend assets from `node_modules` into `public/js/vendor/`, `public/css/vendor/` and `public/css/webfonts` (the file lists live in `tools/install.pl` itself, with `esbuild` bundling exactly one ESM package, swiper).
 - `install-back` — install the Perl dependencies from `tools/cpanfile` via `cpanm`.
 - `install-full` — both; this is the mode for source installs.
 

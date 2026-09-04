@@ -31,8 +31,9 @@ import map 的浏览器提供 polyfill。
   路径前缀之下的场景）。`public/js/mod/common.js` 中的 `ApiURL` 类读取它，并将基础 URL
   前置到每个应用内部 URL 上；所有 API 调用都经由它进行。
 
-`public/js/vendor/` 下的第三方 ESM 文件**不提交到仓库**——它们由 esbuild 在安装时从
-`node_modules` 打包而来，由 `tools/install.pl` 中的 `@vendor_bundle` 列表驱动。jQuery 及其他经典
+`public/js/vendor/` 下的第三方 ESM 文件**不提交到仓库**——它们由 `tools/install.pl` 在安装时从
+`node_modules` 准备：大多数经 `@vendor_js` 列表原样复制，而 `swiper-bundle.js` 则由 esbuild 依照
+仅有一项的 `@vendor_bundle` 列表打包。jQuery 及其他经典
 脚本（`jquery.min.js`、`jquery.dataTables.min.js`、`jquery.contextMenu.min.js`、`awesomplete.min.js`、
 `tippy-bundle.umd.min.js` 等）通过页面模板中的普通 `<script src>` 标签加载（参见
 `templates/index.html.tt2` 和 `templates/reader.html.tt2`），并在模块代码中作为全局变量（`$`、`tippy`、……）
@@ -46,7 +47,7 @@ import map 的浏览器提供 polyfill。
 | 模块 | 职责（经核实的导出） |
 |---|---|
 | `common.js` | 每个页面共享的 DOM/字符串助手：`isUserLogged()`（读取 `body[data-user-logged]`）、`splitTagsByNamespace()`、`buildTagList()`、`buildTagsDiv()`、`buildThumbnailDiv()`、`buildStatusDiv()`、`buildBookmarkIconElement()`、`colorCodeTags()`、`getProgress()`、`encodeHTML()`、`convertTimestamp()`、`ApiURL` 类、`getArchiveData()`（按 ID 键控的档案数据会话缓存），以及下文描述的 toast/弹窗层。 |
-| `server.js` | 通用 API 访问：`callAPI()`、`callAPISilent()`、`callAPIBody()`（同时理解 LRR `success/error` JSON 与 OpenAPI 风格 `errors` 载荷的 fetch 封装）、`checkJobStatus()`（Minion 任务轮询）、`saveFormData()`、`triggerScript()`、`deleteArchive()`、`deleteTankoubon()`、`regenerateThumbnails()`、`addArchiveToCategory()`/`removeArchiveFromCategory()`、`updateTagsFromArchive()`/`updateTagsFromTankoubon()`、`loadBookmarkCategoryId()`、`updateServerSideProgress()`。 |
+| `server.js` | 通用 API 访问：`callAPI()`、`callAPISilent()`、`callAPIBody()`（fetch 封装——前两者同时理解 LRR `success/error` JSON 与 OpenAPI 风格 `errors` 载荷）、`checkJobStatus()`（Minion 任务轮询）、`saveFormData()`、`triggerScript()`、`deleteArchive()`、`deleteTankoubon()`、`regenerateThumbnails()`、`addArchiveToCategory()`/`removeArchiveFromCategory()`、`updateTagsFromArchive()`/`updateTagsFromTankoubon()`、`loadBookmarkCategoryId()`、`updateServerSideProgress()`。 |
 | `index.js` | 档案索引中表格之外的功能：分类选择器、带 Awesomplete 标签建议的快速搜索（`loadTagSuggestions()`）、Swiper 轮播（`toggleCarousel()`/`updateCarousel()` 导出，另有内部函数 `loadCarousel()`，请求 `/api/search` 的变体如 `/api/search/random?count=15`）、带单行本合并的多选模式（`toggleMultiSelectMode()` 导出，另有内部函数 `mergeSelectionIntoTankoubon()`）、通过 `marked` + `DOMPurify` 渲染的版本检查与更新日志（`checkVersion()`、`fetchChangelog()`）、localStorage→服务器阅读进度迁移（`migrateProgress()`）。 |
 | `index_datatables.js` | 基于 DataTables 的档案表格：`initializeAll()`、`doSearch()`、列渲染器（`renderTitle()`、`renderTags()`）、缩略图视图（`initializeThumbView()`）、URL 状态同步（`buildURLParameters()`/`consumeURLParameters()`）、行/单元格回调。从 `index.js` 拆分出来，以便表格层可以独立替换。 |
 | `index_contextmenu.js` | 档案缩略图上的右键菜单：`initialize(catListData)`、通过 `handleContextMenu()` 接线的删除/评分/分类操作。记录菜单是从轮播还是表格打开（sessionStorage `navigationState`），以便阅读器恢复导航上下文。 |
@@ -64,7 +65,8 @@ import map 的浏览器提供 polyfill。
 
 - 响应可能以 LRR 旧格式（`{ success: 0, error }`）或 OpenAPI
   校验格式（`{ errors: [{ message }] }`）携带错误；`callAPI()` 和 `callAPISilent()` 都会将其转换成
-  抛出的 `Error`。`callAPIBody()` 在同一流程上增加请求体和可选的 `Content-Type`。
+  抛出的 `Error`。`callAPIBody()` 增加请求体和可选的 `Content-Type`，但只理解
+  `success`/`error` 格式——它没有对 OpenAPI `errors` 载荷的处理。
 - `checkJobStatus(jobId, useDetail, callback, failureCallback, progressCallback)` 轮询
   `/api/minion/{id}`（或需要已登录用户的 `/api/minion/{id}/detail`），并按任务状态使用不同的
   轮询间隔：`inactive` 时 5 秒，`active` 时 1 秒（以任务 `notes` 调用 `progressCallback`），
@@ -118,7 +120,7 @@ DOM。它们都遵循相同形态（`import * as Server from "./mod/server.js"; 
 
 图片预取由 `preloadImages()` 完成：它通过 `loadImage()` 以 blob 形式抓取接下来的
 `state.preloadCount.value` 页（双页模式下翻倍，另加前一页），把 `URL.createObjectURL()` 的结果保存在
-`state.preloadedImg` 中，并将字节大小记录到 `state.preloadedSizes` 供文件信息显示使用。跨档案的
+`state.preloadedImg` 中，并将以 KiB 计的大小（`Content-Length` / 1024）记录到 `state.preloadedSizes` 供文件信息显示使用。跨档案的
 下一个/上一个导航（`readNextArchive()`/`readPreviousArchive()`）会从
 `localStorage` 中诸如 `currArchiveIds`/`nextArchiveIds` 的键恢复来源的 DataTables 页面，使用户回到
 出发位置。

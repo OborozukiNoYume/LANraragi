@@ -31,9 +31,10 @@ Two related mechanisms round this out:
   prefix). The `ApiURL` class in `public/js/mod/common.js` reads it and prepends the base URL to every
   app-internal URL; all API calls go through it.
 
-The vendor ESM files under `public/js/vendor/` are **not committed** — they are bundled from `node_modules` at
-install time by esbuild, driven by the `@vendor_bundle` list in `tools/install.pl`. jQuery and the other classic
-scripts (`jquery.min.js`, `jquery.dataTables.min.js`, `jquery.contextMenu.min.js`, `awesomplete.min.js`,
+The vendor ESM files under `public/js/vendor/` are **not committed** — they are provisioned from
+`node_modules` at install time by `tools/install.pl`: most are copied verbatim via the `@vendor_js`
+list, while `swiper-bundle.js` is bundled by esbuild from the one-entry `@vendor_bundle` list.
+jQuery and the other classic scripts (`jquery.min.js`, `jquery.dataTables.min.js`, `jquery.contextMenu.min.js`, `awesomplete.min.js`,
 `tippy-bundle.umd.min.js`, etc.) are loaded via plain `<script src>` tags in the page templates (see
 `templates/index.html.tt2` and `templates/reader.html.tt2`) and used as globals (`$`, `tippy`, ...) from module
 code. Templates typically bootstrap with an inline `<script type="module">` that imports the page's modules and
@@ -46,7 +47,7 @@ Nine shared modules implement all cross-page logic:
 | Module | Responsibilities (verified exports) |
 |---|---|
 | `common.js` | DOM/string helpers shared by every page: `isUserLogged()` (reads `body[data-user-logged]`), `splitTagsByNamespace()`, `buildTagList()`, `buildTagsDiv()`, `buildThumbnailDiv()`, `buildStatusDiv()`, `buildBookmarkIconElement()`, `colorCodeTags()`, `getProgress()`, `encodeHTML()`, `convertTimestamp()`, the `ApiURL` class, `getArchiveData()` (session cache of archive data keyed by ID), and the toast/popup layer described below. |
-| `server.js` | Generic API access: `callAPI()`, `callAPISilent()`, `callAPIBody()` (fetch wrappers that understand both LRR `success/error` JSON and OpenAPI-style `errors` payloads), `checkJobStatus()` (Minion job polling), `saveFormData()`, `triggerScript()`, `deleteArchive()`, `deleteTankoubon()`, `regenerateThumbnails()`, `addArchiveToCategory()`/`removeArchiveFromCategory()`, `updateTagsFromArchive()`/`updateTagsFromTankoubon()`, `loadBookmarkCategoryId()`, `updateServerSideProgress()`. |
+| `server.js` | Generic API access: `callAPI()`, `callAPISilent()`, `callAPIBody()` (fetch wrappers — the first two understand both LRR `success/error` JSON and OpenAPI-style `errors` payloads), `checkJobStatus()` (Minion job polling), `saveFormData()`, `triggerScript()`, `deleteArchive()`, `deleteTankoubon()`, `regenerateThumbnails()`, `addArchiveToCategory()`/`removeArchiveFromCategory()`, `updateTagsFromArchive()`/`updateTagsFromTankoubon()`, `loadBookmarkCategoryId()`, `updateServerSideProgress()`. |
 | `index.js` | Archive Index features outside the table: category selector, quick search with Awesomplete tag suggestions (`loadTagSuggestions()`), the Swiper carousel (`toggleCarousel()`/`updateCarousel()` exports plus the internal `loadCarousel()` hitting `/api/search` variants such as `/api/search/random?count=15`), multi-select mode with Tankoubon merge (`toggleMultiSelectMode()` export plus the internal `mergeSelectionIntoTankoubon()`), version check and changelog rendering via `marked` + `DOMPurify` (`checkVersion()`, `fetchChangelog()`), localStorage→server progress migration (`migrateProgress()`). |
 | `index_datatables.js` | The DataTables-backed archive table: `initializeAll()`, `doSearch()`, column renderers (`renderTitle()`, `renderTags()`), thumbnail view (`initializeThumbView()`), URL state sync (`buildURLParameters()`/`consumeURLParameters()`), row/cell callbacks. Split from `index.js` so the table layer could be swapped out independently. |
 | `index_contextmenu.js` | The right-click menu on archive thumbnails: `initialize(catListData)`, delete/rating/category actions wired through `handleContextMenu()`. Records whether the menu was opened from the carousel or the table (sessionStorage `navigationState`) so the Reader can restore navigation context. |
@@ -64,7 +65,8 @@ Two API conventions in `server.js` are worth knowing when adding new calls:
 
 - Responses may carry errors in either the LRR legacy shape (`{ success: 0, error }`) or the OpenAPI
   validation shape (`{ errors: [{ message }] }`); both `callAPI()` and `callAPISilent()` translate them into
-  thrown `Error`s. `callAPIBody()` adds a request body and optional `Content-Type` to the same flow.
+  thrown `Error`s. `callAPIBody()` adds a request body and optional `Content-Type`, but only understands the
+  `success`/`error` shape — it has no handling for the OpenAPI `errors` payload.
 - `checkJobStatus(jobId, useDetail, callback, failureCallback, progressCallback)` polls
   `/api/minion/{id}` (or `/api/minion/{id}/detail`, which requires a logged-in user) with different intervals
   per job state: 5 s while `inactive`, 1 s while `active` (invoking `progressCallback` with the job `notes`),
@@ -119,7 +121,8 @@ by the template (`trackProgressLocally`, `authenticateProgress`):
 
 Image prefetching is `preloadImages()`: it fetches the next `state.preloadCount.value` pages (doubled in
 double-page mode, plus one previous page) as blobs via `loadImage()` and keeps `URL.createObjectURL()` results in
-`state.preloadedImg`, recording byte sizes in `state.preloadedSizes` for the fileinfo display. Cross-archive
+`state.preloadedImg`, recording sizes in KiB (`Content-Length` / 1024) in `state.preloadedSizes` for the
+fileinfo display. Cross-archive
 next/prev navigation (`readNextArchive()`/`readPreviousArchive()`) restores the originating DataTables page from
 `localStorage` keys such as `currArchiveIds`/`nextArchiveIds` so the user lands back where they started.
 

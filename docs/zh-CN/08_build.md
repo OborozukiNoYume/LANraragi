@@ -83,7 +83,7 @@ npm 之外还有两个实用脚本：`script/get_version` 打印 `package.json` 
 
 `tools/install.pl`（通过 `npm run lanraragi-installer [mode]` 调用）支持三种模式：
 
-- `install-front` —— 执行 npm install，并把 `node_modules` 中的前端资源 vendor 到 `public/js/vendor/`、`public/css/vendor/` 和 `public/css/webfonts`（文件清单就在 `tools/install.pl` 内部，少数 ESM 包由 `esbuild` 打包）。
+- `install-front` —— 执行 `npm ci`，并把 `node_modules` 中的前端资源 vendor 到 `public/js/vendor/`、`public/css/vendor/` 和 `public/css/webfonts`（文件清单就在 `tools/install.pl` 内部，`esbuild` 只打包一个 ESM 包：swiper）。
 - `install-back` —— 通过 `cpanm` 安装 `tools/cpanfile` 中的 Perl 依赖。
 - `install-full` —— 两者兼有；源码安装使用此模式。
 

@@ -31,7 +31,7 @@ LANraragi 插件是位于 `lib/LANraragi/Plugin/` 下的普通 Perl 包，通过
 | 键 | 使用者 | 含义 |
 |-----|---------|---------|
 | `parameters` | 设置界面 | `{ type, desc, default_value }` 参数描述符构成的数组（按位置）或哈希（按名称） |
-| `oneshot_arg` | 元数据插件 | 每次运行参数的提示输入，例如图库 URL 覆盖 |
+| `oneshot_arg` | 元数据（及部分脚本）插件 | 每次运行参数的提示输入，例如图库 URL 覆盖 |
 | `login_from` | 所有类型 | 应注入其 UserAgent 的登录插件的命名空间 |
 | `cooldown` | 批量打标签界面 | 出于对 API 的礼貌，两次运行之间建议的延迟秒数 |
 | `url_regex` | 下载插件 | 决定此下载器认领哪些 URL 的正则表达式 |
@@ -39,8 +39,9 @@ LANraragi 插件是位于 `lib/LANraragi/Plugin/` 下的普通 Perl 包，通过
 其中两个需要精确说明：
 
 - **`cooldown` 仅是建议值。** 它由 `EHentai`（4 秒）、`MEMS`（4 秒）和 `Pixiv`
-  （1 秒）在其 `plugin_info` 中声明，唯一的消费者是前端批量打标签器
-  （`public/js/batch.js` 将其读作默认超时）。没有任何后端代码读取或强制执行它。
+  （1 秒）在其 `plugin_info` 中声明，唯一的消费者在前端：`templates/batch.html.tt2`
+  把它渲染进一个隐藏 span，`public/js/batch.js` 再把该值读作默认超时。任何后端
+  （`lib/`）代码都不读取或强制执行它。
 - **`login_from` 是命名空间，不是模块名。** `lib/LANraragi/Model/Plugins.pm` 的
   `exec_login_plugin()` 通过常规的注册路径查找它。
 
@@ -70,10 +71,10 @@ LANraragi 插件是位于 `lib/LANraragi/Plugin/` 下的普通 Perl 包，通过
 有七个字段：`archive_id`、`archive_title`、`existing_tags`、`thumbnail_hash`（缺失时
 当场经 `extract_thumbnail()` 重新生成）、`file_path`、`user_agent`（由
 `exec_login_plugin()` 从 `login_from` 构建）和 `oneshot_param`。插件返回
-`tags`/`title`/`summary`（或 `error`）；返回的标签在启用时经过标签规则过滤，与
-`existing_tags` 去重，并在 `archive-write:$id` 锁下写入。批量运行使用
-`exec_enabled_plugins_on_file()`，它会强制 `regexplugin` 命名空间
-（`Plugin/Metadata/RegexParse.pm`）最先运行。
+`tags`/`title`/`summary`（或 `error`）；返回的标签在启用时经过标签规则过滤，并与
+`existing_tags` 去重——但单次运行路径只把它们*返回*给调用方而不写入。在
+`archive-write:$id` 锁下写入的步骤位于批量/自动插件变体 `exec_enabled_plugins_on_file()`
+中，它还会强制 `regexplugin` 命名空间（`Plugin/Metadata/RegexParse.pm`）最先运行。
 
 ### 脚本插件
 
@@ -81,13 +82,14 @@ LANraragi 插件是位于 `lib/LANraragi/Plugin/` 下的普通 Perl 包，通过
 调用 `run_script(\%lrr_info, %settings)`。返回哈希为自由格式，经 API 原样呈现。
 本 fork 仓库新增的 `Plugin/Scripts/EhTagAutoUpdater.pm`（命名空间
 `ehtag_auto_updater`）即属此类型：它查询 EhTagTranslation/Database 的 GitHub releases
-API，下载 `db.text.json`，应用用户配置的文本替换，并更新系统数据库。
+API，下载 `db.text.json`，应用一处硬编码的文本替换（`"重新分类"` → `"类别"`——该插件
+不声明任何 `parameters`），并更新系统数据库。
 
 ### 下载插件
 
 由 URL 摄入触发（`lib/LANraragi/Utils/Minion.pm` 中的 `download_url` Minion 任务）。
-`Utils/Plugins.pm` 的 `get_downloader_for_url()` 将 URL 与每个已启用下载器的
-`url_regex` 匹配；随后 `exec_download_plugin()` 调用
+`Utils/Plugins.pm` 的 `get_downloader_for_url()` 将 URL 与每个*已注册*下载器的
+`url_regex` 匹配（此处不检查 `enabled` 标志）；随后 `exec_download_plugin()` 调用
 `provide_url(\%lrr_info, ...)`，`$lrr_info` 含有 `user_agent`、`url` 和 `tempdir`。
 插件返回 `download_url`（LRR 用该插件的 UserAgent 下载）或 `file_path`（插件已自行
 取回文件）。无论哪种，结果都会交给 `LANraragi::Model::Upload::handle_incoming_file`，
@@ -108,7 +110,7 @@ UserAgent。登录插件没有 `$lrr_info`；它们只接收自己配置的参�
 风格：
 
 - **按位置（旧式）：** `parameters` 是数组；保存的值是 `customargs` 字段下的一个
-  JSON 数组，以 `@$settings{customargs}` 传给插件。
+  JSON 数组，以 `@{ $args{customargs} }` 传给插件。
 - **按名称（现行）：** `parameters` 是哈希；每个键作为独立字段存入同一个 Redis
   哈希。声明了 `to_named_params` 的插件会在首次读取时由
   `convert_to_named_params_and_persist()` 迁移其旧的 `customargs`。

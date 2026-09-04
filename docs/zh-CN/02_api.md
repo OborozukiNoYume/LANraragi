@@ -4,7 +4,7 @@
 
 ## 概述与路由
 
-所有 `/api/*` 流量都由 **Mojolicious::Plugin::OpenAPI** 处理，该插件在 `lib/LANraragi/Utils/Routing.pm` 的 `apply_routes()` 中加载，以 `tools/openapi.yaml` 作为其规格。该规格的版本为 OpenAPI 3.1.0，声明了唯一的服务器条目 `https://lrr.tvc-16.science/api`；插件从这个服务器 URL 推导出 `/api` 路径前缀，因此下文参考表中列出的每个操作路径都在 `/api` 之下提供服务（例如 `/archives` 即 `GET /api/archives`）。
+几乎所有 `/api/*` 流量都由 **Mojolicious::Plugin::OpenAPI** 处理（少数例外直接注册在 `apply_routes()` 中，列于本文档末尾），该插件在 `lib/LANraragi/Utils/Routing.pm` 的 `apply_routes()` 中加载，以 `tools/openapi.yaml` 作为其规格。该规格的版本为 OpenAPI 3.1.0，声明了唯一的服务器条目 `https://lrr.tvc-16.science/api`；插件从这个服务器 URL 推导出 `/api` 路径前缀，因此下文参考表中列出的每个操作路径都在 `/api` 之下提供服务（例如 `/archives` 即 `GET /api/archives`）。
 
 规格中的每个操作都带有一个 `x-mojo-to` 存根，例如 `api-search#handle_api`，它把操作映射到 `lib/LANraragi/Controller/Api/` 中的控制器方法。在控制器运行之前，插件会依照规格校验传入请求（路径/查询/正文参数）；校验失败由 `lib/LANraragi/Utils/OpenAPI.pm` 中的 `openapi.valid_input` 覆盖转为 400 响应，该覆盖还会在服务器端记录错误。`disableopenapi` 配置标志（在配置 UI 中暴露）会同时绕过请求与响应校验，但保持路由不变。
 
@@ -229,7 +229,7 @@
 
 三条与 API 使用者相关的 HTTP 路由直接注册在 `lib/LANraragi/Utils/Routing.pm` 的 `apply_routes()` 中，因此不会出现在 `tools/openapi.yaml` 或上表中：
 
-- **`GET /api/info/metrics`** —— 路由到 `lib/LANraragi/Controller/Api/Metrics.pm` 中的 `serve_metrics()`，后者渲染由 `lib/LANraragi/Model/Metrics.pm` 中的 `get_prometheus_metrics()` 构建的 Prometheus 展示格式（`text/plain; version=0.0.4`）。该路由只在 `enablemetrics` 设置开启（默认关闭）时注册，并且挂载在 `logged_in_api()` 之下，因此无论该设置如何，始终要求认证。
+- **`GET /api/info/metrics`** —— 路由到 `lib/LANraragi/Controller/Api/Metrics.pm` 中的 `serve_metrics()`，后者渲染由 `lib/LANraragi/Model/Metrics.pm` 中的 `get_prometheus_metrics()` 构建的 Prometheus 展示格式（`text/plain; version=0.0.4; charset=utf-8`）。该路由只在 `enablemetrics` 设置开启（默认关闭）时注册，并且挂载在 `logged_in_api()` 之下，因此无论该设置如何，始终要求认证。
 - **`WebSocket /batch/socket`** —— 批量打标签 websocket，由 `lib/LANraragi/Controller/Batch.pm` 中的 `socket()` 处理。它挂载在基于会话的 Web 登录（`lib/LANraragi/Controller/Login.pm` 中的 `logged_in()`）之下，因此通过浏览器会话或被禁用的密码认证——而非 API 密钥——并保持 80 秒的不活动超时。
 - **`GET /search`** —— 支撑主档案表的 DataTables 端点，由 `lib/LANraragi/Controller/Api/Search.pm` 中的 `handle_datatables()` 处理。它使用 DataTables 服务器端协议（`draw`、`start`、`length`、`search[value]`、`order[0][column]`、`order[0][dir]`、`columns[i][name]`、`columns[i][search][value]`），外加两个更合理的自定义参数 `grouptanks`（默认 `true`）和 `hidecompleted`（默认 `false`）。`tags` 列的搜索值通常是分类 ID，魔法值 `NEW_ONLY` 和 `UNTAGGED_ONLY` 分别切换相应的过滤器。该路由与 OpenAPI 路由器共享 CORS 和 No-Fun 模式包装，但在其他方面无需认证。
 

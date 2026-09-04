@@ -32,7 +32,7 @@ data URI). Optional keys:
 | Key | Used by | Meaning |
 |-----|---------|---------|
 | `parameters` | Settings UI | Array (positional) or hash (named) of `{ type, desc, default_value }` parameter descriptors |
-| `oneshot_arg` | Metadata plugins | Prompt shown for a per-run argument, e.g. a gallery URL override |
+| `oneshot_arg` | Metadata (and some script) plugins | Prompt shown for a per-run argument, e.g. a gallery URL override |
 | `login_from` | All types | Namespace of a login plugin whose UserAgent should be injected |
 | `cooldown` | Batch tagging UI | Suggested delay in seconds between runs for API politeness |
 | `url_regex` | Download plugins | Regex deciding which URLs this downloader claims |
@@ -40,8 +40,9 @@ data URI). Optional keys:
 Two of these deserve a precision note:
 
 - **`cooldown` is advisory only.** It is declared by `EHentai` (4 s), `MEMS` (4 s) and `Pixiv`
-  (1 s) in their `plugin_info`, and the only consumer is the front-end batch-tagger
-  (`public/js/batch.js` reads it as the default timeout). No backend code reads or enforces it.
+  (1 s) in their `plugin_info`, and the only consumers are front-end: `templates/batch.html.tt2`
+  renders it into a hidden span and `public/js/batch.js` reads that as the default timeout. No
+  backend (`lib/`) code reads or enforces it.
 - **`login_from` is a namespace, not a module name.** `lib/LANraragi/Model/Plugins.pm`'s
   `exec_login_plugin()` looks it up through the normal registry path.
 
@@ -74,9 +75,10 @@ seven fields: `archive_id`, `archive_title`, `existing_tags`, `thumbnail_hash` (
 the spot via `extract_thumbnail()` if missing), `file_path`, `user_agent` (built by
 `exec_login_plugin()` from `login_from`), and `oneshot_param`. The plugin returns
 `tags`/`title`/`summary` (or `error`); returned tags are filtered through tag rules when
-enabled, deduplicated against `existing_tags`, and written under an `archive-write:$id` lock.
-Batch runs use `exec_enabled_plugins_on_file()`, which forces the `regexplugin` namespace
-(`Plugin/Metadata/RegexParse.pm`) to run first.
+enabled and deduplicated against `existing_tags` — but the single-run paths only *return* them
+to the caller without writing. The write under an `archive-write:$id` lock lives in
+`exec_enabled_plugins_on_file()`, the batch/autoplugin variant, which also forces the
+`regexplugin` namespace (`Plugin/Metadata/RegexParse.pm`) to run first.
 
 ### Script plugins
 
@@ -84,14 +86,16 @@ Batch runs use `exec_enabled_plugins_on_file()`, which forces the `regexplugin` 
 calls `run_script(\%lrr_info, %settings)`. The return hash is free-form and surfaced as-is
 through the API. This is the type used by this fork's addition,
 `Plugin/Scripts/EhTagAutoUpdater.pm` (namespace `ehtag_auto_updater`): it checks the
-EhTagTranslation/Database GitHub releases API, downloads `db.text.json`, applies user-configured
-text replacements, and updates the system database.
+EhTagTranslation/Database GitHub releases API, downloads `db.text.json`, applies a single
+hardcoded text replacement (`"重新分类"` → `"类别"` — the plugin declares no `parameters`),
+and updates the system database.
 
 ### Download plugins
 
 Triggered by URL ingestion (the `download_url` Minion task in
 `lib/LANraragi/Utils/Minion.pm`). `get_downloader_for_url()` in `Utils/Plugins.pm` matches the
-URL against every enabled downloader's `url_regex`; `exec_download_plugin()` then calls
+URL against every *registered* downloader's `url_regex` (the `enabled` flag is not consulted
+here); `exec_download_plugin()` then calls
 `provide_url(\%lrr_info, ...)` with `$lrr_info` containing `user_agent`, `url`, and `tempdir`.
 The plugin returns either `download_url` (LRR downloads it with the plugin's UserAgent) or
 `file_path` (the plugin already fetched the file). Either way the result goes to
@@ -112,7 +116,7 @@ archive database). `get_plugin_parameters()` in `Utils/Plugins.pm` fills in `def
 first, then overlays saved values. Two parameter styles exist:
 
 - **Positional (legacy):** `parameters` is an array; saved values are a JSON array under the
-  `customargs` field, passed to the plugin as `@$settings{customargs}`.
+  `customargs` field, passed to the plugin as `@{ $args{customargs} }`.
 - **Named (current):** `parameters` is a hash; each key is stored as its own field in the same
   Redis hash. A plugin declaring `to_named_params` gets its old `customargs` migrated on first
   read by `convert_to_named_params_and_persist()`.
