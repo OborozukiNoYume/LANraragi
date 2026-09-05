@@ -1,7 +1,7 @@
 # LANraragi Project Tree
 
 > Auto-generated from `git ls-files` — do not edit by hand.
-> Baseline commit `2094cc1d`, 2026-09-04. Total tracked files: 481.
+> Baseline commit `6af7cd51`, 2026-09-05. Total tracked files: 482.
 
 ```
 ├── .devcontainer
@@ -133,6 +133,7 @@
 │   │   │   │   ├── Ksk.pm
 │   │   │   │   ├── MEMS.pm
 │   │   │   │   ├── nHentai.pm
+│   │   │   │   ├── nHentaiCN.pm
 │   │   │   │   ├── Pixiv.pm
 │   │   │   │   └── RegexParse.pm
 │   │   │   └── Scripts

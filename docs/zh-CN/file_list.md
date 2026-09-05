@@ -1,12 +1,12 @@
 # LANraragi 项目文件清单
 
-> 由 `git ls-files` 自动生成——请勿手工编辑。 Baseline commit `2094cc1d`, 2026-09-04.
+> 由 `git ls-files` 自动生成——请勿手工编辑。 Baseline commit `6af7cd51`, 2026-09-05.
 
 ## 文件统计
 
 | 类型 | 数量 |
 |------|------|
-| Perl modules (.pm) | 101 |
+| Perl modules (.pm) | 102 |
 | Perl scripts/tests (.pl, .t) | 45 |
 | JavaScript (.js) | 25 |
 | Templates (.tt2, .ep) | 26 |
@@ -16,7 +16,7 @@
 | Shell/PowerShell (.sh, .ps1) | 9 |
 | Other | 184 |
 
-**Total tracked files: 481**
+**Total tracked files: 482**
 
 ## 按区域文件列表
 
@@ -108,7 +108,7 @@
 - `lib/LANraragi/Plugin/Login/Pixiv.pm`
 - `lib/LANraragi/Plugin/Login/nHentai.pm`
 
-### lib/LANraragi/Plugin/Metadata (21)
+### lib/LANraragi/Plugin/Metadata (22)
 
 - `lib/LANraragi/Plugin/Metadata/Chaika.pm`
 - `lib/LANraragi/Plugin/Metadata/ChaikaFile.pm`
@@ -131,6 +131,7 @@
 - `lib/LANraragi/Plugin/Metadata/Pixiv.pm`
 - `lib/LANraragi/Plugin/Metadata/RegexParse.pm`
 - `lib/LANraragi/Plugin/Metadata/nHentai.pm`
+- `lib/LANraragi/Plugin/Metadata/nHentaiCN.pm`
 
 ### lib/LANraragi/Plugin/Download (3)
 

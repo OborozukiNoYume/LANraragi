@@ -1,6 +1,6 @@
 # 插件系统
 
-> 基准 commit `2094cc1d`（2026-09-04）。事实已对照代码核实——生成时已逐条核对引文。
+> 基准 commit `6af7cd51`（2026-09-05）。事实已对照代码核实——生成时已逐条核对引文。
 
 ## 概览
 
@@ -27,7 +27,7 @@ LANraragi 插件是位于 `lib/LANraragi/Plugin/` 下的普通 Perl 包，通过
 
 每个插件从 `plugin_info()` 返回一个哈希。标准键（由内置插件声明）：`name`、`type`、
 `namespace`、`author`、`version` 和 `description`。`icon`（base64 data URI）接近标准：
-32 个内置插件中有 21 个声明了它（所有 Login 与 Download 插件均省略）。可选键：
+33 个内置插件中有 22 个声明了它（所有 Login 与 Download 插件均省略）。可选键：
 
 | 键 | 使用者 | 含义 |
 |-----|---------|---------|
@@ -162,17 +162,17 @@ Minion 任务驱动，经 `exec_with_lock_pure` 的 `plugin-write:{NAMESPACE}` �
 
 ## 内置插件清单
 
-截至基准 commit，随发行内置的 32 个插件为：
+截至基准 commit，随发行内置的 33 个插件为：
 
 - **登录（4 个）：** `EHentai.pm`、`Fakku.pm`、`Pixiv.pm`、`nHentai.pm`
-- **元数据（21 个）：** `Chaika.pm`、`ChaikaFile.pm`、`ComicInfo.pm`、`CopyArchiveTags.pm`、
+- **元数据（22 个）：** `Chaika.pm`、`ChaikaFile.pm`、`ComicInfo.pm`、`CopyArchiveTags.pm`、
   `CopyTags.pm`、`DateAdded.pm`、`EHDLInfo.pm`、`EHentai.pm`、`Eze.pm`、`Fakku.pm`、
   `GalleryDL.pm`、`HDoujin.pm`、`HatH.pm`、`Hentag.pm`、`Hitomi.pm`、`Koromo.pm`、`Ksk.pm`、
-  `MEMS.pm`、`Pixiv.pm`、`RegexParse.pm`、`nHentai.pm`
+  `MEMS.pm`、`Pixiv.pm`、`RegexParse.pm`、`nHentai.pm`、`nHentaiCN.pm`
 - **下载（3 个）：** `Chaika.pm`、`EHentai.pm`、`Pixiv.pm`
 - **脚本（4 个）：** `EhTagAutoUpdater.pm`、`FolderToCat.pm`、`SourceFinder.pm`、
-  `nHentaiSourceConverter.pm` —— 其中 `EhTagAutoUpdater.pm` 为本 fork 仓库专有，
-  而非上游 LANraragi 自带。
+  `nHentaiSourceConverter.pm` —— 其中 `EhTagAutoUpdater.pm` 与 `nHentaiCN.pm`（元数据）
+  为本 fork 仓库专有，而非上游 LANraragi 自带。
 
 `Utils/Plugins.pm` 与 `Utils/Registry.pm` 的一行式概览见
 [03_utils.md](03_utils.md)；它们的内部机制在本页描述。

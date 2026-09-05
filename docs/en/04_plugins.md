@@ -1,6 +1,6 @@
 # The Plugin System
 
-> Baseline commit `2094cc1d` (2026-09-04). Facts verified against code — cite-checked at generation time.
+> Baseline commit `6af7cd51` (2026-09-05). Facts verified against code — cite-checked at generation time.
 
 ## Overview
 
@@ -27,7 +27,7 @@ skips any package whose type's required method is missing (`can('run_script')`,
 
 Every plugin returns a hash from `plugin_info()`. Standard keys (as declared by the built-in
 plugins): `name`, `type`, `namespace`, `author`, `version`, and `description`. `icon` (a base64
-data URI) is near-standard: 21 of the 32 built-ins declare it (every Login and Download plugin
+data URI) is near-standard: 22 of the 33 built-ins declare it (every Login and Download plugin
 omits it). Optional keys:
 
 | Key | Used by | Meaning |
@@ -171,17 +171,17 @@ file and provenance (user settings survive) and refuses to touch builtin plugins
 
 ## Built-in Plugin Inventory
 
-As of the baseline commit, the 32 shipped plugins are:
+As of the baseline commit, the 33 shipped plugins are:
 
 - **Login (4):** `EHentai.pm`, `Fakku.pm`, `Pixiv.pm`, `nHentai.pm`
-- **Metadata (21):** `Chaika.pm`, `ChaikaFile.pm`, `ComicInfo.pm`, `CopyArchiveTags.pm`,
+- **Metadata (22):** `Chaika.pm`, `ChaikaFile.pm`, `ComicInfo.pm`, `CopyArchiveTags.pm`,
   `CopyTags.pm`, `DateAdded.pm`, `EHDLInfo.pm`, `EHentai.pm`, `Eze.pm`, `Fakku.pm`,
   `GalleryDL.pm`, `HDoujin.pm`, `HatH.pm`, `Hentag.pm`, `Hitomi.pm`, `Koromo.pm`, `Ksk.pm`,
-  `MEMS.pm`, `Pixiv.pm`, `RegexParse.pm`, `nHentai.pm`
+  `MEMS.pm`, `Pixiv.pm`, `RegexParse.pm`, `nHentai.pm`, `nHentaiCN.pm`
 - **Download (3):** `Chaika.pm`, `EHentai.pm`, `Pixiv.pm`
 - **Scripts (4):** `EhTagAutoUpdater.pm`, `FolderToCat.pm`, `SourceFinder.pm`,
-  `nHentaiSourceConverter.pm` — of which `EhTagAutoUpdater.pm` is specific to this fork rather
-  than upstream LANraragi.
+  `nHentaiSourceConverter.pm` — of which `EhTagAutoUpdater.pm` and `nHentaiCN.pm` (Metadata)
+  are specific to this fork rather than upstream LANraragi.
 
 See [03_utils.md](03_utils.md) for the one-line overview of `Utils/Plugins.pm` and
 `Utils/Registry.pm`; their internals are described on this page.
